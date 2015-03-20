@@ -401,14 +401,20 @@ void RenderScanLine(void) {
 
     float RAD1 = 100.0f;
     float RAD2 = 200.0f;
+    float RAD3 = 300.0f;
 
     for (y = 0; y < VIEW_HEIGHT; ++y) {
         for (x = 0; x < VIEW_WIDTH; ++x) {
             int dx = x - VIEW_WIDTH / 2.0f;
             int dy = y - VIEW_HEIGHT / 2.0f;
             float rc = sqrtf(dx*dx + dy*dy);
-            if ((RAD1 < rc) && (rc < RAD2)) {
-                nBright = (int)(255.0f - (rc - RAD1) / (RAD2 - RAD1) * 255.0f);
+            if ((RAD1 < rc) && (rc < RAD3)) {
+                if (rc < RAD2) {
+                    nBright = (int)((rc - RAD1) / (RAD2 - RAD1) * 255.0f);
+                }
+                else {
+                    nBright = (int)(255.0f - (rc - RAD2) / (RAD3 - RAD2) * 255.0f);
+                }
                 DrawPoints(x, y, 0, nBright, nBright);
             }
         }
