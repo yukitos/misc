@@ -4,11 +4,9 @@
 #include "stdafx.h"
 #include "Learn3DGame.h"
 
-#define MAX_BUFFER_VERTEX 20000
-
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
-    XMFLOAT4 v4Color;
+    XMFLOAT2 v2UV;
 };
 
 struct CBNeverChanges {
@@ -18,27 +16,27 @@ struct CBNeverChanges {
 UINT g_nClientWidth;
 UINT g_nClientHeight;
 HWND g_hWnd;
+
 ID3D11Device *g_pd3dDevice;
 IDXGISwapChain *g_pSwapChain;
 ID3D11DeviceContext *g_pImmediateContext;
 ID3D11RasterizerState *g_pRS;
 ID3D11RenderTargetView *g_pRTV;
 ID3D11Texture2D *g_pDepthStencil = NULL;
-//ID3D11DepthStencilView *g_pDepthStencilView = NULL;
+ID3D11DepthStencilView *g_pDepthStencilView = NULL;
 D3D_FEATURE_LEVEL g_FeatureLevel;
 ID3D11Buffer *g_pVertexBuffer;
-//ID3D11Buffer *g_pIndexBuffer;
+ID3D11Buffer *g_pIndexBuffer;
 ID3D11BlendState *g_pbsAlphaBlend;
 ID3D11VertexShader *g_pVertexShader;
 ID3D11PixelShader *g_pPixelShader;
 ID3D11InputLayout *g_pInputLayout;
 ID3D11SamplerState *g_pSamplerState;
+
 ID3D11Buffer *g_pCBNeverChanges = NULL;
-CUSTOMVERTEX g_cvVertices[MAX_BUFFER_VERTEX];
-int g_nVertexNum = 0;
+
 ID3D11ShaderResourceView *g_pNowTexture = NULL;
 
-// Direct3Dの初期化
 HRESULT InitD3D(void) {
     HRESULT hr;
     D3D_FEATURE_LEVEL FeatureLevelsRequested[6] = {
@@ -119,9 +117,43 @@ HRESULT InitD3D(void) {
         return hr;
     }
 
+    // Create depth stencil texture
+
+    RECT rc;
+    GetClientRect(g_hWnd, &rc);
+    D3D11_TEXTURE2D_DESC descDepth;
+    ZeroMemory(&descDepth, sizeof(descDepth));
+    descDepth.Width = rc.right - rc.left;
+    descDepth.Height = rc.bottom - rc.top;
+    descDepth.MipLevels = 1;
+    descDepth.ArraySize = 1;
+    descDepth.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    descDepth.SampleDesc.Count = 1;
+    descDepth.SampleDesc.Quality = 0;
+    descDepth.Usage = D3D11_USAGE_DEFAULT;
+    descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    descDepth.CPUAccessFlags = 0;
+    descDepth.MiscFlags = 0;
+    hr = g_pd3dDevice->CreateTexture2D(&descDepth, NULL, &g_pDepthStencil);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    // Create the depth stencil view
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
+    ZeroMemory(&descDSV, sizeof(descDSV));
+    descDSV.Format = descDepth.Format;
+    descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    descDSV.Texture2D.MipSlice = 0;
+    hr = g_pd3dDevice->CreateDepthStencilView(g_pDepthStencil, &descDSV, &g_pDepthStencilView);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
     // Setup rendering target
 
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL);
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
 
     // Setup rasterizer
 
@@ -168,14 +200,14 @@ HRESULT MakeShaders(void) {
 
     // compile
 
-    hr = D3DX11CompileFromFile(_T("Basic_2D_Geom.fx"), NULL, NULL, "VS", "vs_4_0_level_9_1",
+    hr = D3DX11CompileFromFile(_T("Basic_3D_Tex.fx"), NULL, NULL, "VS", "vs_4_0_level_9_1",
         dwShaderFlags, 0, NULL, &pVertexShaderBuffer, &pError, NULL);
     if (FAILED(hr)) {
         MessageBox(NULL, _T("Can't open Basic_3D_Tex.fx"), _T("Error"), MB_OK);
         SAFE_RELEASE(pError);
         return hr;
     }
-    hr = D3DX11CompileFromFile(_T("Basic_2D_Geom.fx"), NULL, NULL, "PS", "ps_4_0_level_9_1",
+    hr = D3DX11CompileFromFile(_T("Basic_3D_Tex.fx"), NULL, NULL, "PS", "ps_4_0_level_9_1",
         dwShaderFlags, 0, NULL, &pPixelShaderBuffer, &pError, NULL);
     if (FAILED(hr)) {
         SAFE_RELEASE(pVertexShaderBuffer);
@@ -212,7 +244,7 @@ HRESULT MakeShaders(void) {
 
     D3D11_INPUT_ELEMENT_DESC layout[] = {
         { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "TEXTURE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
     UINT numElements = ARRAYSIZE(layout);
     LPVOID pbuf = pVertexShaderBuffer->GetBufferPointer();
@@ -265,7 +297,6 @@ int InitDrawModes(void) {
     ZeroMemory(&BlendDesc, sizeof(BlendDesc));
     BlendDesc.AlphaToCoverageEnable = FALSE;
     BlendDesc.IndependentBlendEnable = FALSE;
-    BlendDesc.RenderTarget[0].BlendEnable = TRUE;
     BlendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
     BlendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
     BlendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
@@ -301,24 +332,69 @@ int InitDrawModes(void) {
 HRESULT InitGeometry(void) {
     HRESULT hr;
 
+    // Vertex data
+
+    CUSTOMVERTEX cvVertices[4] = {
+        { XMFLOAT4(-OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f), XMFLOAT2(0.0f, 0.0f) },
+        { XMFLOAT4(OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f), XMFLOAT2(1.0f, 0.0f) },
+        { XMFLOAT4(-OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f), XMFLOAT2(0.0f, 1.0f) },
+        { XMFLOAT4(OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f), XMFLOAT2(1.0f, 1.0f) },
+    };
+
+    // Index data
+
+    WORD wIndices[6] = {
+        0, 1, 2,
+        2, 1, 3,
+    };
+
     // Create vertex buffer
 
     D3D11_BUFFER_DESC BufferDesc;
     ZeroMemory(&BufferDesc, sizeof(BufferDesc));
     BufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-    BufferDesc.ByteWidth = sizeof(CUSTOMVERTEX) * MAX_BUFFER_VERTEX;
+    BufferDesc.ByteWidth = sizeof(CUSTOMVERTEX) * 4;
     BufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     BufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     BufferDesc.MiscFlags = 0;
 
     D3D11_SUBRESOURCE_DATA SubResourceData;
     ZeroMemory(&SubResourceData, sizeof(SubResourceData));
-    SubResourceData.pSysMem = g_cvVertices;
+    SubResourceData.pSysMem = cvVertices;
     SubResourceData.SysMemPitch = 0;
     SubResourceData.SysMemSlicePitch = 0;
     hr = g_pd3dDevice->CreateBuffer(&BufferDesc, &SubResourceData, &g_pVertexBuffer);
     if (FAILED(hr)) {
         return hr;
+    }
+
+    // Create index buffer
+
+    BufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+    BufferDesc.ByteWidth = sizeof(WORD) * 6;
+    BufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    BufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    BufferDesc.MiscFlags = 0;
+
+    SubResourceData.pSysMem = wIndices;
+    hr = g_pd3dDevice->CreateBuffer(&BufferDesc, &SubResourceData, &g_pIndexBuffer);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    // Create texture
+
+    D3DX11_IMAGE_LOAD_INFO liLoadInfo;
+    ID3D11Texture2D *pTexture;
+    ZeroMemory(&liLoadInfo, sizeof(D3DX11_IMAGE_LOAD_INFO));
+    liLoadInfo.Width = 512;
+    liLoadInfo.Height = 512;
+    liLoadInfo.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    liLoadInfo.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    hr = D3DX11CreateShaderResourceViewFromFile(g_pd3dDevice, _T("3.bmp"), &liLoadInfo,
+        NULL, &g_pNowTexture, NULL);
+    if (FAILED(hr)) {
+        MessageBox(NULL, _T("Can't open 3.bmp"), _T("Error"), MB_OK);
     }
 
     return S_OK;
@@ -343,7 +419,7 @@ void Cleanup(void) {
 
     SAFE_RELEASE(g_pRTV);
     SAFE_RELEASE(g_pDepthStencil);
-    //SAFE_RELEASE(g_pDepthStencilView);
+    SAFE_RELEASE(g_pDepthStencilView);
 
     if (g_pSwapChain) {
         g_pSwapChain->SetFullscreenState(FALSE, 0);
@@ -354,9 +430,9 @@ void Cleanup(void) {
     SAFE_RELEASE(g_pd3dDevice);
 }
 
-// ウィンドウプロシージャ
-LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
+// Window procedure
+
+LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -365,56 +441,46 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-// 絵の描画待ち行列フラッシュ
+// Set transform matrix
 
-void FlushDrawingPictures(void)
-{
-    HRESULT hr;
-    if (g_nVertexNum > 0) {
-        D3D11_MAPPED_SUBRESOURCE mappedResource;
-        hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-        if (SUCCEEDED(hr)) {
-            CopyMemory(mappedResource.pData, &(g_cvVertices[0]), sizeof(CUSTOMVERTEX) * g_nVertexNum);
-            g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
-        }
-        g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
-        g_pImmediateContext->Draw(g_nVertexNum, 0);
-    }
+HRESULT SetupMatrices(void) {
+    CBNeverChanges cbNeverChanges;
+    XMMATRIX mWorld;
+    XMMATRIX mView;
+    XMMATRIX mProjection;
 
-    g_nVertexNum = 0;
-    g_pNowTexture = NULL;
+    // Initialize the world matrix
 
-    return;
+    mWorld = XMMatrixRotationY(2.0f * XM_PI * (float)(timeGetTime() % 2000) / 2000.0f);
+
+    // Initialize the view matrix
+
+    XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    mView = XMMatrixLookAtLH(Eye, At, Up);
+
+    // Initialize the projection matrix
+
+    mProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 100.0f);
+
+    cbNeverChanges.mView = XMMatrixTranspose(mWorld * mView * mProjection);
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+
+    return S_OK;
 }
 
-// 1点の描画
-void DrawPoints(int x, int y, int nRed, int nGreen, int nBlue)
-{
-    g_cvVertices[g_nVertexNum].v4Pos = XMFLOAT4((float)x, (float)y, 0.0f, 1.0f);
-    g_cvVertices[g_nVertexNum].v4Color = XMFLOAT4(nRed / 255.0f, nGreen / 255.0f, nBlue / 255.0f, 1.0f);
-    g_nVertexNum++;
-}
+// Rendering
 
-void RenderScanLine(void) {
-    int x, y;
-    int nBright;
-
-    for (y = 0; y < VIEW_HEIGHT; ++y) {
-        for (x = 0; x < VIEW_WIDTH; ++x) {
-            nBright = y & 0xff;
-            DrawPoints(x, y, nBright, nBright, 255);
-        }
-        FlushDrawingPictures();
-    }
-}
-
-// レンダリング
-HRESULT Render(void)
-{
+HRESULT Render(void) {
     // Clear the screen
 
     XMFLOAT4 v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
     g_pImmediateContext->ClearRenderTargetView(g_pRTV, (float*)&v4Color);
+
+    // Clear Z buffer
+
+    g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     // Set sampler and rasterizer
 
@@ -426,7 +492,8 @@ HRESULT Render(void)
     UINT nStrides = sizeof(CUSTOMVERTEX);
     UINT nOffsets = 0;
     g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &nStrides, &nOffsets);
-    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    g_pImmediateContext->IASetIndexBuffer(g_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
+    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_pImmediateContext->IASetInputLayout(g_pInputLayout);
 
     // Configure shader
@@ -435,11 +502,13 @@ HRESULT Render(void)
     g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
 
+    SetupMatrices();
+
     // Rendering
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
-    RenderScanLine();
-    FlushDrawingPictures();
+    g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
+    g_pImmediateContext->DrawIndexed(6, 0, 0);
 
     return S_OK;
 }
@@ -513,3 +582,4 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int) {
     UnregisterClass(_T("D3D sample"), wc.hInstance);
     return 0;
 }
+
