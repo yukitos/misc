@@ -401,7 +401,9 @@ void RenderScanLine(void) {
 
     for (y = 0; y < VIEW_HEIGHT; ++y) {
         for (x = 0; x < VIEW_WIDTH; ++x) {
-            nBright = x & 0xff;
+            int dx = x - VIEW_WIDTH / 2.0f;
+            int dy = y - VIEW_HEIGHT / 2.0f;
+            nBright = (int)sqrtf(dx*dx + dy*dy);
             DrawPoints(x, y, nBright, nBright, 255);
         }
         FlushDrawingPictures();
