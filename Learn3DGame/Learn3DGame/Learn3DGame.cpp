@@ -413,13 +413,13 @@ void RenderScanLine(void) {
             int dy = y - VIEW_HEIGHT / 2.0f;
             float dzsq = RAD * RAD - dx * dx - dy * dy;
             if (dzsq > 0.0f) {
-                float dz = -sqrtf(dzsq);
+                float dz = sqrtf(dzsq);
                 auto nx = dx / RAD;
                 auto ny = dy / RAD;
                 auto nz = dz / RAD;
                 auto fDot = nx * lx + ny * ly + nz * lz;
                 if (fDot >= 0.0f) {
-                    nBright = (int)(fDot * fDirect + fAmbient);
+                    nBright = (int)(fAmbient + powf(fDot, 2.0f) * fDirect);
                 }
                 else {
                     nBright = (int)fAmbient;
