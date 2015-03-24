@@ -399,23 +399,32 @@ void RenderScanLine(void) {
     int x, y;
     int nBright;
 
-    float RAD1 = 100.0f;
-    float RAD2 = 200.0f;
-    float RAD3 = 300.0f;
+    float RAD = 180.0f;
+    float fAmbient = 128.0f;
+    float fDirect = 128.0f;
+
+    float lx = -1.0f / 1.732f;
+    float ly = -1.0f / 1.732f;
+    float lz = 1.0f / 1.732f;
 
     for (y = 0; y < VIEW_HEIGHT; ++y) {
         for (x = 0; x < VIEW_WIDTH; ++x) {
             int dx = x - VIEW_WIDTH / 2.0f;
             int dy = y - VIEW_HEIGHT / 2.0f;
-            float rc = sqrtf(dx*dx + dy*dy);
-            if ((RAD1 < rc) && (rc < RAD3)) {
-                if (rc < RAD2) {
-                    nBright = (int)((rc - RAD1) / (RAD2 - RAD1) * 255.0f);
+            float dzsq = RAD * RAD - dx * dx - dy * dy;
+            if (dzsq > 0.0f) {
+                float dz = -sqrtf(dzsq);
+                auto nx = dx / RAD;
+                auto ny = dy / RAD;
+                auto nz = dz / RAD;
+                auto fDot = nx * lx + ny * ly + nz * lz;
+                if (fDot >= 0.0f) {
+                    nBright = (int)(fDot * fDirect + fAmbient);
                 }
                 else {
-                    nBright = (int)(255.0f - (rc - RAD2) / (RAD3 - RAD2) * 255.0f);
+                    nBright = (int)fAmbient;
                 }
-                DrawPoints(x, y, 0, nBright, nBright);
+                DrawPoints(x, y, nBright, nBright, nBright);
             }
         }
         FlushDrawingPictures();
