@@ -11,6 +11,7 @@
 #include <d3dcompiler.h>
 #include <xnamath.h>
 #include <tchar.h>
+#include <stdio.h>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dx11.lib")

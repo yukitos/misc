@@ -296,6 +296,58 @@ int InitDrawModes(void) {
     return S_OK;
 }
 
+struct MemoryBMP {
+    int nDataSize;
+    BITMAPFILEHEADER *pbfFileH;
+    BITMAPINFOHEADER *pbiInfoH;
+    unsigned char *pcPixels;
+    int nPixelOffset;
+    int nPaletteNum;
+    int nPitch;
+};
+
+MemoryBMP mbPicture;
+
+int LoadBMP(const char* szFileName, MemoryBMP *pmbDest) {
+    FILE *fp;
+    unsigned char *pcBMPBuf;
+
+    if (fopen_s(&fp, szFileName, "rb") != 0) {
+        return -1;
+    }
+
+    // Get file size
+    fseek(fp, 0, SEEK_END);
+    pmbDest->nDataSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    // allocate memory and load the file
+    pcBMPBuf = (unsigned char *)malloc(pmbDest->nDataSize);
+    fread(pcBMPBuf, 1, pmbDest->nDataSize, fp);
+    fclose(fp);
+
+    pmbDest->pbfFileH = (BITMAPFILEHEADER*)pcBMPBuf;
+    pmbDest->pbiInfoH = (BITMAPINFOHEADER*)(pcBMPBuf + sizeof(BITMAPFILEHEADER));
+
+    if (pmbDest->pbiInfoH->biBitCount != 24) {
+        // not supported
+        return -1;
+    }
+
+    // pixel position
+    pmbDest->nPixelOffset =
+        sizeof(BITMAPFILEHEADER)
+        + sizeof(BITMAPINFOHEADER)
+        + pmbDest->nPaletteNum * sizeof(RGBQUAD);
+    pmbDest->pcPixels = pcBMPBuf + pmbDest->nPixelOffset;
+
+    // calculate the pitch
+    pmbDest->nPitch = (pmbDest->pbiInfoH->biBitCount * pmbDest->pbiInfoH->biWidth / 8 + 3) & 0xfffc;
+
+    return 0;
+}
+
+
 // Initialize a geometry
 
 HRESULT InitGeometry(void) {
@@ -321,12 +373,27 @@ HRESULT InitGeometry(void) {
         return hr;
     }
 
+    if (LoadBMP("1.bmp", &mbPicture) < 0) {
+        MessageBox(NULL, _T("Can't open 1.bmp"), _T("Error"), MB_OK);
+        return ERROR_FILE_NOT_FOUND;
+    }
+
     return S_OK;
+}
+
+int ReleaseBMPData(MemoryBMP *pmbDest) {
+    if (pmbDest->pbfFileH) {
+        free(pmbDest->pbfFileH);
+        pmbDest->pbfFileH = NULL;
+    }
+    return 0;
 }
 
 // Cleanup routine
 
 void Cleanup(void) {
+    ReleaseBMPData(&mbPicture);
+
     SAFE_RELEASE(g_pSamplerState);
     SAFE_RELEASE(g_pbsAlphaBlend);
     SAFE_RELEASE(g_pInputLayout);
@@ -395,37 +462,37 @@ void DrawPoints(int x, int y, int nRed, int nGreen, int nBlue)
     g_nVertexNum++;
 }
 
+int GetBMPPixel(int x, int y, MemoryBMP *pmbSrc,
+    int *pnRed, int *pnGreen, int *pnBlue)
+{
+    unsigned char *pLineHead, *pPixelLoc;
+
+    if ((x >= 0) && (x < pmbSrc->pbiInfoH->biWidth)
+        && (y >= 0) && (y < pmbSrc->pbiInfoH->biHeight))
+    {
+        pLineHead = pmbSrc->pcPixels + pmbSrc->nPitch * (pmbSrc->pbiInfoH->biHeight - 1);
+        pPixelLoc = pLineHead - pmbSrc->nPitch * y + x * 3;
+        *pnRed = (int)*(pPixelLoc + 2);
+        *pnGreen = (int)*(pPixelLoc + 1);
+        *pnBlue = (int)*(pPixelLoc + 0);
+    }
+    else {
+        *pnRed = 0;
+        *pnGreen = 0;
+        *pnBlue = 255;
+    }
+
+    return 0;
+}
+
 void RenderScanLine(void) {
     int x, y;
-    int nBright;
-
-    float RAD = 180.0f;
-    float fAmbient = 128.0f;
-    float fDirect = 128.0f;
-
-    float lx = -1.0f / 1.732f;
-    float ly = -1.0f / 1.732f;
-    float lz = 1.0f / 1.732f;
+    int nRed, nGreen, nBlue;
 
     for (y = 0; y < VIEW_HEIGHT; ++y) {
         for (x = 0; x < VIEW_WIDTH; ++x) {
-            int dx = x - VIEW_WIDTH / 2.0f;
-            int dy = y - VIEW_HEIGHT / 2.0f;
-            float dzsq = RAD * RAD - dx * dx - dy * dy;
-            if (dzsq > 0.0f) {
-                float dz = sqrtf(dzsq);
-                auto nx = dx / RAD;
-                auto ny = dy / RAD;
-                auto nz = dz / RAD;
-                auto fDot = nx * lx + ny * ly + nz * lz;
-                if (fDot >= 0.0f) {
-                    nBright = (int)(fAmbient + powf(fDot, 2.0f) * fDirect);
-                }
-                else {
-                    nBright = (int)fAmbient;
-                }
-                DrawPoints(x, y, nBright, nBright, nBright);
-            }
+            GetBMPPixel(x / 2, y / 2, &mbPicture, &nRed, &nGreen, &nBlue);
+            DrawPoints(x, y, nRed, nGreen, nBlue);
         }
         FlushDrawingPictures();
     }
