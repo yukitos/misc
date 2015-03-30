@@ -485,20 +485,50 @@ int GetBMPPixel(int x, int y, MemoryBMP *pmbSrc,
     return 0;
 }
 
+int FilterBiLinear(int nBright1, int nBright2, int nBright3, int nBright4, float lu, float lv)
+{
+    auto x1 = nBright1 * (1.0f - lu) + nBright2 * lu;
+    auto x2 = nBright3 * (1.0f - lu) + nBright4 * lu;
+
+    return (int)(x1 * (1.0f - lv) + x2 * lv);
+}
+
+int GetPixelFiltered(float x, float y, MemoryBMP *pmbSrc, int *pnRed, int *pnGreen, int *pnBlue)
+{
+    float lu, lv;
+    int nRed1, nGreen1, nBlue1;
+    int nRed2, nGreen2, nBlue2;
+    int nRed3, nGreen3, nBlue3;
+    int nRed4, nGreen4, nBlue4;
+
+    GetBMPPixel((int)x+0, (int)y+0, pmbSrc, &nRed1, &nGreen1, &nBlue1);
+    GetBMPPixel((int)x+1, (int)y+0, pmbSrc, &nRed2, &nGreen2, &nBlue2);
+    GetBMPPixel((int)x+0, (int)y+1, pmbSrc, &nRed3, &nGreen3, &nBlue3);
+    GetBMPPixel((int)x+1, (int)y+1, pmbSrc, &nRed4, &nGreen4, &nBlue4);
+
+    lu = x - (int)x;
+    lv = y - (int)y;
+    *pnRed = FilterBiLinear(nRed1, nRed2, nRed3, nRed4, lu, lv);
+    *pnGreen = FilterBiLinear(nGreen1, nGreen2, nGreen3, nGreen4, lu, lv);
+    *pnBlue = FilterBiLinear(nBlue1, nBlue2, nBlue3, nBlue4, lu, lv);
+
+    return 0;
+}
+
 void RenderScanLine(void) {
-    auto fAngle = XM_PIDIV4;
-    auto vBase1_x = cosf(fAngle);
-    auto vBase1_y = sinf(fAngle);
-    auto vBase2_x = cosf(fAngle + XM_PIDIV2);
-    auto vBase2_y = sinf(fAngle + XM_PIDIV2);
-    auto bx = -VIEW_WIDTH / 2.0f * vBase1_x + -VIEW_HEIGHT / 2.0f * vBase2_x;
-    auto by = -VIEW_WIDTH / 2.0f * vBase1_y + -VIEW_HEIGHT / 2.0f * vBase2_y;
+    auto fAngle = XM_PI / 6.0f;
+    auto vBase1_x = 0.05f * cosf(fAngle);
+    auto vBase1_y = 0.05f * sinf(fAngle);
+    auto vBase2_x = 0.05f * cosf(fAngle + XM_PIDIV2);
+    auto vBase2_y = 0.05f * sinf(fAngle + XM_PIDIV2);
+    auto bx = -VIEW_WIDTH / 2.0f * vBase1_x + -VIEW_HEIGHT / 4.0f * vBase2_x;
+    auto by = -VIEW_WIDTH / 2.0f * vBase1_y + -VIEW_HEIGHT / 4.0f * vBase2_y;
     for (auto y = 0; y < VIEW_HEIGHT; ++y) {
         auto cx = bx;
         auto cy = by;
         for (auto x = 0; x < VIEW_WIDTH; ++x) {
             int nRed, nGreen, nBlue;
-            GetBMPPixel((int)(cx + VIEW_WIDTH / 2.0f), (int)(cy + VIEW_HEIGHT / 2.0f),
+            GetPixelFiltered(cx + VIEW_WIDTH / 2.0f, cy + VIEW_HEIGHT / 4.0f,
                 &mbPicture, &nRed, &nGreen, &nBlue);
             DrawPoints(x, y, nRed, nGreen, nBlue);
             cx += vBase1_x;
