@@ -540,6 +540,66 @@ void RenderScanLine(void) {
     }
 }
 
+template <typename T>
+void Swap(T *n1, T *n2) {
+    int temp = *n1;
+    *n1 = *n2;
+    *n2 = temp;
+}
+
+void RenderPolygon(float x1, float y1, float x2, float y2, float x3, float y3) {
+    if (y1 > y2) {
+        Swap(&y1, &y2);
+        Swap(&x1, &x2);
+    }
+    if (y1 > y3) {
+        Swap(&y1, &y3);
+        Swap(&x1, &x3);
+    }
+    if (y2 > y3) {
+        Swap(&y2, &y3);
+        Swap(&x2, &x3);
+    }
+
+    auto a12 = (x2 - x1) / (y2 - y1);
+    auto a13 = (x3 - x1) / (y3 - y1);
+    auto a23 = (x3 - x2) / (y3 - y2);
+    auto xl = x1;
+    auto xr = x1;
+
+    if (a12 < a13) {
+        for (auto y = (int)y1; y < (int)y2; ++y){
+            for (auto x = (int)xl; x < (int)xr; ++x) {
+                DrawPoints(x, y, 255, 255, 255);
+            }
+            xl += a12; xr += a13;
+            FlushDrawingPictures();
+        }
+        for (auto y = (int)y2; y < (int)y3; ++y) {
+            for (auto x = (int)xl; x < (int)xr; ++x) {
+                DrawPoints(x, y, 255, 255, 255);
+            }
+            xl += a23; xr += a13;
+            FlushDrawingPictures();
+        }
+    }
+    else {
+        for (auto y = (int)y1; y < (int)y2; ++y){
+            for (auto x = (int)xl; x < (int)xr; ++x) {
+                DrawPoints(x, y, 255, 255, 255);
+            }
+            xl += a13; xr += a12;
+            FlushDrawingPictures();
+        }
+        for (auto y = (int)y2; y < (int)y3; ++y) {
+            for (auto x = (int)xl; x < (int)xr; ++x) {
+                DrawPoints(x, y, 255, 255, 255);
+            }
+            xl += a13; xr += a23;
+            FlushDrawingPictures();
+        }
+    }
+}
 // ƒŒƒ“ƒ_ƒŠƒ“ƒO
 HRESULT Render(void)
 {
@@ -570,8 +630,9 @@ HRESULT Render(void)
     // Rendering
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
-    RenderScanLine();
-    FlushDrawingPictures();
+    //RenderScanLine();
+    //FlushDrawingPictures();
+    RenderPolygon(0, 0, 100, 50, 50, 200);
 
     return S_OK;
 }
