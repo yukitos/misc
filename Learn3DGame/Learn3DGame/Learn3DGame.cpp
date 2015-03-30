@@ -486,15 +486,27 @@ int GetBMPPixel(int x, int y, MemoryBMP *pmbSrc,
 }
 
 void RenderScanLine(void) {
-    int x, y;
-    int nRed, nGreen, nBlue;
-
-    for (y = 0; y < VIEW_HEIGHT; ++y) {
-        for (x = 0; x < VIEW_WIDTH; ++x) {
-            GetBMPPixel(x / 2, y / 2, &mbPicture, &nRed, &nGreen, &nBlue);
+    auto fAngle = XM_PIDIV4;
+    auto vBase1_x = cosf(fAngle);
+    auto vBase1_y = sinf(fAngle);
+    auto vBase2_x = cosf(fAngle + XM_PIDIV2);
+    auto vBase2_y = sinf(fAngle + XM_PIDIV2);
+    auto bx = -VIEW_WIDTH / 2.0f * vBase1_x + -VIEW_HEIGHT / 2.0f * vBase2_x;
+    auto by = -VIEW_WIDTH / 2.0f * vBase1_y + -VIEW_HEIGHT / 2.0f * vBase2_y;
+    for (auto y = 0; y < VIEW_HEIGHT; ++y) {
+        auto cx = bx;
+        auto cy = by;
+        for (auto x = 0; x < VIEW_WIDTH; ++x) {
+            int nRed, nGreen, nBlue;
+            GetBMPPixel((int)(cx + VIEW_WIDTH / 2.0f), (int)(cy + VIEW_HEIGHT / 2.0f),
+                &mbPicture, &nRed, &nGreen, &nBlue);
             DrawPoints(x, y, nRed, nGreen, nBlue);
+            cx += vBase1_x;
+            cy += vBase1_y;
         }
         FlushDrawingPictures();
+        bx += vBase2_x;
+        by += vBase2_y;
     }
 }
 
