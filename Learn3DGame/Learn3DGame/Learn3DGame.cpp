@@ -445,21 +445,39 @@ int Draw3DPolygon(
 #define CORNER_NUM 20
 #define R 1.0f
 
+XMFLOAT3 ConvertRTPToXYZ(float r, float fTheta, float fPhi) {
+    return XMFLOAT3(
+        r * sinf(fTheta) * cosf(fPhi),
+        r * cosf(fTheta),
+        r * sinf(fTheta) * sinf(fPhi));
+}
+
 int DrawChangingPictures(void) {
     float fAngleDelta = XM_2PI / CORNER_NUM;
-    auto fAngle1 = 0.0f;
-    auto fAngle2 = fAngleDelta;
-    for (auto i = 0; i < CORNER_NUM; ++i) {
-        Draw3DPolygon(
-            R * cosf(fAngle1), 0.0f, R * sinf(fAngle1), 0xffff0000,
-            R * cosf(fAngle2), 0.0f, R * sinf(fAngle2), 0xff00ff00,
-            0.0f, 1.0f, 0.0f, 0xff0000ff);
-        Draw3DPolygon(
-            R * cosf(fAngle2), 0.0f, R * sinf(fAngle2), 0xffff0000,
-            R * cosf(fAngle1), 0.0f, R * sinf(fAngle1), 0xff00ff00,
-            0.0f, 0.0f, 0.0f, 0xff0000ff);
-        fAngle1 += fAngleDelta;
-        fAngle2 += fAngleDelta;
+    auto fTheta1 = 0.0f;
+    auto fTheta2 = fTheta1 + fAngleDelta;
+    for (auto i = 0; i < CORNER_NUM / 2; ++i) {
+        auto fPhi1 = 0.0f;
+        auto fPhi2 = fPhi1 + fAngleDelta;
+        for (auto j = 0; j < CORNER_NUM; ++j) {
+            XMFLOAT3 p1 = ConvertRTPToXYZ(R, fTheta1, fPhi1);
+            XMFLOAT3 p2 = ConvertRTPToXYZ(R, fTheta1, fPhi2);
+            XMFLOAT3 p3 = ConvertRTPToXYZ(R, fTheta2, fPhi1);
+            XMFLOAT3 p4 = ConvertRTPToXYZ(R, fTheta2, fPhi2);
+
+            Draw3DPolygon(
+                p1.x, p1.y, p1.z, 0xffff0000,
+                p3.x, p3.y, p3.z, 0xff00ff00,
+                p2.x, p2.y, p2.z, 0xff0000ff);
+            Draw3DPolygon(
+                p2.x, p2.y, p2.z, 0xffff0000,
+                p3.x, p3.y, p3.z, 0xff00ff00,
+                p4.x, p4.y, p4.z, 0xff0000ff);
+            fPhi1 += fAngleDelta;
+            fPhi2 += fAngleDelta;
+        }
+        fTheta1 += fAngleDelta;
+        fTheta2 += fAngleDelta;
     }
 
     return 0;
