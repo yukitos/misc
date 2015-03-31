@@ -332,9 +332,23 @@ int InitDrawModes(void) {
     return S_OK;
 }
 
+#define ROT_SPEED (XM_PI / 100.0f)
+
 XMMATRIX CreateWorldMatrix(void) {
-    float fAngle = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
-    return XMMatrixRotationY(fAngle);
+    static float fAngleX = 0.0f;
+    float fAngleY = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
+    
+    if (GetAsyncKeyState(VK_UP)) {
+        fAngleX += ROT_SPEED;
+    }
+    if (GetAsyncKeyState(VK_DOWN)) {
+        fAngleX -= ROT_SPEED;
+    }
+
+    auto matRotY = XMMatrixRotationY(fAngleY);
+    auto matRotX = XMMatrixRotationX(fAngleX);
+    
+    return matRotY * matRotX;
 }
 
 // Initialize a geometry
@@ -459,24 +473,32 @@ void DrawIndexed3DPolygons(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIndic
     g_nIndexNum += nIndexNum;
 }
 
+#define R 2.0f
+
 int DrawChangingPictures(void) {
-    CUSTOMVERTEX Vertices[4];
-    WORD wIndices[6] = {
-        0, 1, 2,
-        0, 1, 3
-    };
+    CUSTOMVERTEX Vertices[5];
+    WORD wIndices[4 * 3];
 
     // Create vertices data
-    Vertices[0].v4Pos = XMFLOAT4(-1.0f, 1.0f, 0.0f, 1.0f);
-    Vertices[1].v4Pos = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
-    Vertices[2].v4Pos = XMFLOAT4(0.0f, -1.0f, 1.0f, 1.0f);
-    Vertices[3].v4Pos = XMFLOAT4(0.0f, -1.0f, -1.0f, 1.0f);
+    Vertices[0].v4Pos = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
     Vertices[0].v4Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-    Vertices[1].v4Color = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-    Vertices[2].v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
-    Vertices[3].v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
+    auto fAngleDelta = XM_2PI / 4.0f;
+    auto fAngle = 0.0f;
+    for (auto i = 0; i < 4; ++i) {
+        Vertices[i + 1].v4Pos = XMFLOAT4(R * cosf(fAngle), -1.0f, R * sinf(fAngle), 1.0f);
+        Vertices[i + 1].v4Color = XMFLOAT4(0.0f, (float)(i & 1), (float)((i + 1) & 1), 1.0f);
+        fAngle += fAngleDelta;
+    }
 
-    DrawIndexed3DPolygons(Vertices, 4, wIndices, 6);
+    auto nIndex = 0;
+    for (auto i = 1; i <= 4; ++i) {
+        wIndices[nIndex + 0] = 0;
+        wIndices[nIndex + 1] = i;
+        wIndices[nIndex + 2] = (i % 4) + 1;
+        nIndex += 3;
+    }
+
+    DrawIndexed3DPolygons(Vertices, 5, wIndices, 4 * 3);
 
     return 0;
 }
