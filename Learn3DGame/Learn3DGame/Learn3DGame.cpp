@@ -168,14 +168,14 @@ HRESULT MakeShaders(void) {
 
     // compile
 
-    hr = D3DX11CompileFromFile(_T("Basic_2D_Geom.fx"), NULL, NULL, "VS", "vs_4_0_level_9_1",
+    hr = D3DX11CompileFromFile(_T("Basic_3D_Color.fx"), NULL, NULL, "VS", "vs_4_0_level_9_1",
         dwShaderFlags, 0, NULL, &pVertexShaderBuffer, &pError, NULL);
     if (FAILED(hr)) {
         MessageBox(NULL, _T("Can't open Basic_3D_Tex.fx"), _T("Error"), MB_OK);
         SAFE_RELEASE(pError);
         return hr;
     }
-    hr = D3DX11CompileFromFile(_T("Basic_2D_Geom.fx"), NULL, NULL, "PS", "ps_4_0_level_9_1",
+    hr = D3DX11CompileFromFile(_T("Basic_3D_Color.fx"), NULL, NULL, "PS", "ps_4_0_level_9_1",
         dwShaderFlags, 0, NULL, &pPixelShaderBuffer, &pError, NULL);
     if (FAILED(hr)) {
         SAFE_RELEASE(pVertexShaderBuffer);
@@ -296,57 +296,17 @@ int InitDrawModes(void) {
     return S_OK;
 }
 
-struct MemoryBMP {
-    int nDataSize;
-    BITMAPFILEHEADER *pbfFileH;
-    BITMAPINFOHEADER *pbiInfoH;
-    unsigned char *pcPixels;
-    int nPixelOffset;
-    int nPaletteNum;
-    int nPitch;
-};
+#define POLY_SPEED 0.1f // polygon speed
 
-MemoryBMP mbPicture;
-
-int LoadBMP(const char* szFileName, MemoryBMP *pmbDest) {
-    FILE *fp;
-    unsigned char *pcBMPBuf;
-
-    if (fopen_s(&fp, szFileName, "rb") != 0) {
-        return -1;
-    }
-
-    // Get file size
-    fseek(fp, 0, SEEK_END);
-    pmbDest->nDataSize = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    // allocate memory and load the file
-    pcBMPBuf = (unsigned char *)malloc(pmbDest->nDataSize);
-    fread(pcBMPBuf, 1, pmbDest->nDataSize, fp);
-    fclose(fp);
-
-    pmbDest->pbfFileH = (BITMAPFILEHEADER*)pcBMPBuf;
-    pmbDest->pbiInfoH = (BITMAPINFOHEADER*)(pcBMPBuf + sizeof(BITMAPFILEHEADER));
-
-    if (pmbDest->pbiInfoH->biBitCount != 24) {
-        // not supported
-        return -1;
-    }
-
-    // pixel position
-    pmbDest->nPixelOffset =
-        sizeof(BITMAPFILEHEADER)
-        + sizeof(BITMAPINFOHEADER)
-        + pmbDest->nPaletteNum * sizeof(RGBQUAD);
-    pmbDest->pcPixels = pcBMPBuf + pmbDest->nPixelOffset;
-
-    // calculate the pitch
-    pmbDest->nPitch = (pmbDest->pbiInfoH->biBitCount * pmbDest->pbiInfoH->biWidth / 8 + 3) & 0xfffc;
-
-    return 0;
+XMMATRIX CreateWorldMatrix(void) {
+    static float x = 0.0f;
+    float fAngle = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
+    XMMATRIX xmResult = XMMatrixRotationY(fAngle);
+    if (GetAsyncKeyState(VK_LEFT)) { x -= POLY_SPEED; }
+    if (GetAsyncKeyState(VK_RIGHT)) { x += POLY_SPEED; }
+    xmResult._41 = x;
+    return xmResult;
 }
-
 
 // Initialize a geometry
 
@@ -373,27 +333,13 @@ HRESULT InitGeometry(void) {
         return hr;
     }
 
-    if (LoadBMP("1.bmp", &mbPicture) < 0) {
-        MessageBox(NULL, _T("Can't open 1.bmp"), _T("Error"), MB_OK);
-        return ERROR_FILE_NOT_FOUND;
-    }
-
     return S_OK;
-}
-
-int ReleaseBMPData(MemoryBMP *pmbDest) {
-    if (pmbDest->pbfFileH) {
-        free(pmbDest->pbfFileH);
-        pmbDest->pbfFileH = NULL;
-    }
-    return 0;
 }
 
 // Cleanup routine
 
 void Cleanup(void) {
-    ReleaseBMPData(&mbPicture);
-
+    SAFE_RELEASE(g_pVertexBuffer);
     SAFE_RELEASE(g_pSamplerState);
     SAFE_RELEASE(g_pbsAlphaBlend);
     SAFE_RELEASE(g_pInputLayout);
@@ -444,7 +390,7 @@ void FlushDrawingPictures(void)
             CopyMemory(mappedResource.pData, &(g_cvVertices[0]), sizeof(CUSTOMVERTEX) * g_nVertexNum);
             g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
         }
-        g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
+        //g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
         g_pImmediateContext->Draw(g_nVertexNum, 0);
     }
 
@@ -454,158 +400,59 @@ void FlushDrawingPictures(void)
     return;
 }
 
-// 1“_‚Ì•`‰æ
-void DrawPoints(int x, int y, int nRed, int nGreen, int nBlue)
+int Draw3DPolygon(
+    float x1, float y1, float z1, int nColor1,
+    float x2, float y2, float z2, int nColor2,
+    float x3, float y3, float z3, int nColor3
+    )
 {
-    g_cvVertices[g_nVertexNum].v4Pos = XMFLOAT4((float)x, (float)y, 0.0f, 1.0f);
-    g_cvVertices[g_nVertexNum].v4Color = XMFLOAT4(nRed / 255.0f, nGreen / 255.0f, nBlue / 255.0f, 1.0f);
-    g_nVertexNum++;
-}
-
-int GetBMPPixel(int x, int y, MemoryBMP *pmbSrc,
-    int *pnRed, int *pnGreen, int *pnBlue)
-{
-    unsigned char *pLineHead, *pPixelLoc;
-
-    if ((x >= 0) && (x < pmbSrc->pbiInfoH->biWidth)
-        && (y >= 0) && (y < pmbSrc->pbiInfoH->biHeight))
-    {
-        pLineHead = pmbSrc->pcPixels + pmbSrc->nPitch * (pmbSrc->pbiInfoH->biHeight - 1);
-        pPixelLoc = pLineHead - pmbSrc->nPitch * y + x * 3;
-        *pnRed = (int)*(pPixelLoc + 2);
-        *pnGreen = (int)*(pPixelLoc + 1);
-        *pnBlue = (int)*(pPixelLoc + 0);
-    }
-    else {
-        *pnRed = 0;
-        *pnGreen = 0;
-        *pnBlue = 255;
+    if (g_nVertexNum > (MAX_BUFFER_VERTEX - 3)) {
+        // if the num of vertices are greater than max, draw nothing
+        return -1;
     }
 
-    return 0;
-}
-
-int FilterBiLinear(int nBright1, int nBright2, int nBright3, int nBright4, float lu, float lv)
-{
-    auto x1 = nBright1 * (1.0f - lu) + nBright2 * lu;
-    auto x2 = nBright3 * (1.0f - lu) + nBright4 * lu;
-
-    return (int)(x1 * (1.0f - lv) + x2 * lv);
-}
-
-int GetPixelFiltered(float x, float y, MemoryBMP *pmbSrc, int *pnRed, int *pnGreen, int *pnBlue)
-{
-    float lu, lv;
-    int nRed1, nGreen1, nBlue1;
-    int nRed2, nGreen2, nBlue2;
-    int nRed3, nGreen3, nBlue3;
-    int nRed4, nGreen4, nBlue4;
-
-    GetBMPPixel((int)x+0, (int)y+0, pmbSrc, &nRed1, &nGreen1, &nBlue1);
-    GetBMPPixel((int)x+1, (int)y+0, pmbSrc, &nRed2, &nGreen2, &nBlue2);
-    GetBMPPixel((int)x+0, (int)y+1, pmbSrc, &nRed3, &nGreen3, &nBlue3);
-    GetBMPPixel((int)x+1, (int)y+1, pmbSrc, &nRed4, &nGreen4, &nBlue4);
-
-    lu = x - (int)x;
-    lv = y - (int)y;
-    *pnRed = FilterBiLinear(nRed1, nRed2, nRed3, nRed4, lu, lv);
-    *pnGreen = FilterBiLinear(nGreen1, nGreen2, nGreen3, nGreen4, lu, lv);
-    *pnBlue = FilterBiLinear(nBlue1, nBlue2, nBlue3, nBlue4, lu, lv);
-
-    return 0;
-}
-
-void RenderScanLine(void) {
-    auto fAngle = XM_PI / 6.0f;
-    auto vBase1_x = 0.05f * cosf(fAngle);
-    auto vBase1_y = 0.05f * sinf(fAngle);
-    auto vBase2_x = 0.05f * cosf(fAngle + XM_PIDIV2);
-    auto vBase2_y = 0.05f * sinf(fAngle + XM_PIDIV2);
-    auto bx = -VIEW_WIDTH / 2.0f * vBase1_x + -VIEW_HEIGHT / 4.0f * vBase2_x;
-    auto by = -VIEW_WIDTH / 2.0f * vBase1_y + -VIEW_HEIGHT / 4.0f * vBase2_y;
-    for (auto y = 0; y < VIEW_HEIGHT; ++y) {
-        auto cx = bx;
-        auto cy = by;
-        for (auto x = 0; x < VIEW_WIDTH; ++x) {
-            int nRed, nGreen, nBlue;
-            GetPixelFiltered(cx + VIEW_WIDTH / 2.0f, cy + VIEW_HEIGHT / 4.0f,
-                &mbPicture, &nRed, &nGreen, &nBlue);
-            DrawPoints(x, y, nRed, nGreen, nBlue);
-            cx += vBase1_x;
-            cy += vBase1_y;
-        }
+    if (g_pNowTexture) {
         FlushDrawingPictures();
-        bx += vBase2_x;
-        by += vBase2_y;
     }
+
+    // Set vertices
+    g_cvVertices[g_nVertexNum + 0].v4Pos = XMFLOAT4(x1, y1, z1, 1.0f);
+    g_cvVertices[g_nVertexNum + 0].v4Color = XMFLOAT4(
+        (float)((nColor1 >> 16) & 0xff) / 255.0f,
+        (float)((nColor1 >> 8) & 0xff) / 255.0f,
+        (float)((nColor1 >> 0) & 0xff) / 255.0f,
+        (float)((nColor1 >> 24) & 0xff) / 255.0f);
+    g_cvVertices[g_nVertexNum + 1].v4Pos = XMFLOAT4(x2, y2, z2, 1.0f);
+    g_cvVertices[g_nVertexNum + 1].v4Color = XMFLOAT4(
+        (float)((nColor2 >> 16) & 0xff) / 255.0f,
+        (float)((nColor2 >> 8) & 0xff) / 255.0f,
+        (float)((nColor2 >> 0) & 0xff) / 255.0f,
+        (float)((nColor2 >> 24) & 0xff) / 255.0f);
+    g_cvVertices[g_nVertexNum + 2].v4Pos = XMFLOAT4(x3, y3, z3, 1.0f);
+    g_cvVertices[g_nVertexNum + 2].v4Color = XMFLOAT4(
+        (float)((nColor3 >> 16) & 0xff) / 255.0f,
+        (float)((nColor3 >> 8) & 0xff) / 255.0f,
+        (float)((nColor3 >> 0) & 0xff) / 255.0f,
+        (float)((nColor3 >> 24) & 0xff) / 255.0f);
+    g_nVertexNum += 3;
+    g_pNowTexture = NULL;
+
+    return 0;
 }
 
-template <typename T>
-void Swap(T *n1, T *n2) {
-    int temp = *n1;
-    *n1 = *n2;
-    *n2 = temp;
-}
-
-void RenderPolygon(float x1, float y1, float x2, float y2, float x3, float y3) {
-    if (y1 > y2) {
-        Swap(&y1, &y2);
-        Swap(&x1, &x2);
-    }
-    if (y1 > y3) {
-        Swap(&y1, &y3);
-        Swap(&x1, &x3);
-    }
-    if (y2 > y3) {
-        Swap(&y2, &y3);
-        Swap(&x2, &x3);
-    }
-
-    auto a12 = (x2 - x1) / (y2 - y1);
-    auto a13 = (x3 - x1) / (y3 - y1);
-    auto a23 = (x3 - x2) / (y3 - y2);
-    auto xl = x1;
-    auto xr = x1;
-
-    if (a12 < a13) {
-        for (auto y = (int)y1; y < (int)y2; ++y){
-            for (auto x = (int)xl; x < (int)xr; ++x) {
-                DrawPoints(x, y, 255, 255, 255);
-            }
-            xl += a12; xr += a13;
-            FlushDrawingPictures();
-        }
-        for (auto y = (int)y2; y < (int)y3; ++y) {
-            for (auto x = (int)xl; x < (int)xr; ++x) {
-                DrawPoints(x, y, 255, 255, 255);
-            }
-            xl += a23; xr += a13;
-            FlushDrawingPictures();
-        }
-    }
-    else {
-        for (auto y = (int)y1; y < (int)y2; ++y){
-            for (auto x = (int)xl; x < (int)xr; ++x) {
-                DrawPoints(x, y, 255, 255, 255);
-            }
-            xl += a13; xr += a12;
-            FlushDrawingPictures();
-        }
-        for (auto y = (int)y2; y < (int)y3; ++y) {
-            for (auto x = (int)xl; x < (int)xr; ++x) {
-                DrawPoints(x, y, 255, 255, 255);
-            }
-            xl += a13; xr += a23;
-            FlushDrawingPictures();
-        }
-    }
+int DrawChangingPictures(void) {
+    Draw3DPolygon(
+        -1.0f, -1.0f, 0.0f, 0xffff0000,
+        1.0f, -1.0f, 0.0f, 0xff00ff00,
+        0.0f, 1.0f, 0.0f, 0xff0000ff);
+    return 0;
 }
 // ƒŒƒ“ƒ_ƒŠƒ“ƒO
 HRESULT Render(void)
 {
     // Clear the screen
 
-    XMFLOAT4 v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
+    XMFLOAT4 v4Color = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
     g_pImmediateContext->ClearRenderTargetView(g_pRTV, (float*)&v4Color);
 
     // Set sampler and rasterizer
@@ -618,7 +465,7 @@ HRESULT Render(void)
     UINT nStrides = sizeof(CUSTOMVERTEX);
     UINT nOffsets = 0;
     g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &nStrides, &nOffsets);
-    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+    g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_pImmediateContext->IASetInputLayout(g_pInputLayout);
 
     // Configure shader
@@ -627,12 +474,31 @@ HRESULT Render(void)
     g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
 
+    // transform matrices
+
+    CBNeverChanges cbNeverChanges;
+    XMMATRIX mWorld, mView, mProjection;
+
+    mWorld = CreateWorldMatrix();
+
+    // Initialize the view matrix
+    auto Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
+    auto At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    auto Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    mView = XMMatrixLookAtLH(Eye, At, Up);
+
+    // Initialize the projection matrix
+    mProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 100.0f);
+
+    cbNeverChanges.mView = XMMatrixTranspose(mWorld * mView * mProjection);
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+
     // Rendering
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
-    //RenderScanLine();
-    //FlushDrawingPictures();
-    RenderPolygon(0, 0, 100, 50, 50, 200);
+    DrawChangingPictures();
+
+    FlushDrawingPictures();
 
     return S_OK;
 }
