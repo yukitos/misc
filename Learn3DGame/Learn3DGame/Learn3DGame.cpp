@@ -457,15 +457,21 @@ XMFLOAT3 RotateXYOnXZ(float x, float y, float fAngle) {
 }
 
 int DrawChangingPictures(void) {
-    float SrcPoints[5][2] = {
-        { 0.0f, 2.0f },
+    float SrcPoints[11][2] = {
+        { 1.8f, 2.0f },
+        { 2.0f, 1.5f },
+        { 1.8f, 1.0f },
         { 1.0f, 0.5f },
-        { 0.5f, 0.5f },
-        { 0.5f, -2.0f },
+        { 0.5f, 0.0f },
+        { 0.2f, -0.5f },
+        { 0.2f, -1.7f },
+        { 0.7f, -1.8f },
+        { 1.4f, -1.9f },
+        { 1.5f, -2.0f },
         { 0.0f, -2.0f }
     };
     float fAngleDelta = XM_2PI / CORNER_NUM;
-    for (auto i = 0; i < 5 - 1; ++i) {
+    for (auto i = 0; i < 10; ++i) {
         auto fTheta1 = 0.0f;
         auto fTheta2 = fTheta1 + fAngleDelta;
         
