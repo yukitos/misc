@@ -299,13 +299,15 @@ int InitDrawModes(void) {
 #define POLY_SPEED 0.1f // polygon speed
 
 XMMATRIX CreateWorldMatrix(void) {
-    static float x = 0.0f;
-    float fAngle = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
-    XMMATRIX xmResult = XMMatrixRotationY(fAngle);
-    if (GetAsyncKeyState(VK_LEFT)) { x -= POLY_SPEED; }
-    if (GetAsyncKeyState(VK_RIGHT)) { x += POLY_SPEED; }
-    xmResult._41 = x;
-    return xmResult;
+    static float fAngleX = 0.0f;
+    float fAngleY = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
+    if (GetAsyncKeyState(VK_UP)) { fAngleX += POLY_SPEED; }
+    if (GetAsyncKeyState(VK_DOWN)) { fAngleX -= POLY_SPEED; }
+    
+    auto matRotY = XMMatrixRotationY(fAngleY);
+    auto matRotX = XMMatrixRotationX(fAngleX);
+
+    return matRotY * matRotX;
 }
 
 // Initialize a geometry
@@ -440,11 +442,25 @@ int Draw3DPolygon(
     return 0;
 }
 
+#define R 2.0f
+
 int DrawChangingPictures(void) {
-    Draw3DPolygon(
-        -1.0f, -1.0f, 0.0f, 0xffff0000,
-        1.0f, -1.0f, 0.0f, 0xff00ff00,
-        0.0f, 1.0f, 0.0f, 0xff0000ff);
+    float fAngleDelta = XM_PIDIV2;
+    auto fAngle1 = 0.0f;
+    auto fAngle2 = fAngleDelta;
+    for (auto i = 0; i < 4; ++i) {
+        Draw3DPolygon(
+            R * cosf(fAngle1), -1.0f, R * sinf(fAngle1), 0xffff0000,
+            R * cosf(fAngle2), -1.0f, R * sinf(fAngle2), 0xff00ff00,
+            0.0f, 1.0f, 0.0f, 0xff0000ff);
+        Draw3DPolygon(
+            R * cosf(fAngle2), -1.0f, R * sinf(fAngle2), 0xffff0000,
+            R * cosf(fAngle1), -1.0f, R * sinf(fAngle1), 0xff00ff00,
+            0.0f, -1.0f, 0.0f, 0xff0000ff);
+        fAngle1 += fAngleDelta;
+        fAngle2 += fAngleDelta;
+    }
+
     return 0;
 }
 // ƒŒƒ“ƒ_ƒŠƒ“ƒO
