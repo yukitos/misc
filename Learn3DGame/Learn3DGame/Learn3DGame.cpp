@@ -4,7 +4,8 @@
 #include "stdafx.h"
 #include "Learn3DGame.h"
 
-#define MAX_BUFFER_VERTEX 20000
+#define MAX_BUFFER_VERTEX 10000
+#define MAX_BUFFER_INDEX 20000
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
@@ -24,10 +25,10 @@ ID3D11DeviceContext *g_pImmediateContext;
 ID3D11RasterizerState *g_pRS;
 ID3D11RenderTargetView *g_pRTV;
 ID3D11Texture2D *g_pDepthStencil = NULL;
-//ID3D11DepthStencilView *g_pDepthStencilView = NULL;
+ID3D11DepthStencilView *g_pDepthStencilView = NULL;
 D3D_FEATURE_LEVEL g_FeatureLevel;
 ID3D11Buffer *g_pVertexBuffer;
-//ID3D11Buffer *g_pIndexBuffer;
+ID3D11Buffer *g_pIndexBuffer;
 ID3D11BlendState *g_pbsAlphaBlend;
 ID3D11VertexShader *g_pVertexShader;
 ID3D11PixelShader *g_pPixelShader;
@@ -36,9 +37,12 @@ ID3D11SamplerState *g_pSamplerState;
 ID3D11Buffer *g_pCBNeverChanges = NULL;
 CUSTOMVERTEX g_cvVertices[MAX_BUFFER_VERTEX];
 int g_nVertexNum = 0;
+WORD g_wIndices[MAX_BUFFER_INDEX];
+int g_nIndexNum = 0;
+
 ID3D11ShaderResourceView *g_pNowTexture = NULL;
 
-// Direct3D‚Ì‰Šú‰»
+// Initialize Direct3D
 HRESULT InitD3D(void) {
     HRESULT hr;
     D3D_FEATURE_LEVEL FeatureLevelsRequested[6] = {
@@ -119,9 +123,43 @@ HRESULT InitD3D(void) {
         return hr;
     }
 
+    // Create depth stencil texture
+
+    RECT rc;
+    GetClientRect(g_hWnd, &rc);
+    D3D11_TEXTURE2D_DESC descDepth;
+    ZeroMemory(&descDepth, sizeof(descDepth));
+    descDepth.Width = rc.right - rc.left;
+    descDepth.Height = rc.bottom - rc.top;
+    descDepth.MipLevels = 1;
+    descDepth.ArraySize = 1;
+    descDepth.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    descDepth.SampleDesc.Count = 1;
+    descDepth.SampleDesc.Quality = 0;
+    descDepth.Usage = D3D11_USAGE_DEFAULT;
+    descDepth.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    descDepth.CPUAccessFlags = 0;
+    descDepth.MiscFlags = 0;
+    hr = g_pd3dDevice->CreateTexture2D(&descDepth, NULL, &g_pDepthStencil);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
+    // Create the depth stencil view
+
+    D3D11_DEPTH_STENCIL_VIEW_DESC descDSV;
+    ZeroMemory(&descDSV, sizeof(descDSV));
+    descDSV.Format = descDepth.Format;
+    descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    descDSV.Texture2D.MipSlice = 0;
+    hr = g_pd3dDevice->CreateDepthStencilView(g_pDepthStencil, &descDSV, &g_pDepthStencilView);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
     // Setup rendering target
 
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL);
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
 
     // Setup rasterizer
 
@@ -215,8 +253,6 @@ HRESULT MakeShaders(void) {
         { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
     UINT numElements = ARRAYSIZE(layout);
-    LPVOID pbuf = pVertexShaderBuffer->GetBufferPointer();
-    size_t sz = pVertexShaderBuffer->GetBufferSize();
     hr = g_pd3dDevice->CreateInputLayout(layout, numElements,
         pVertexShaderBuffer->GetBufferPointer(),
         pVertexShaderBuffer->GetBufferSize(),
@@ -296,18 +332,9 @@ int InitDrawModes(void) {
     return S_OK;
 }
 
-#define POLY_SPEED 0.1f // polygon speed
-
 XMMATRIX CreateWorldMatrix(void) {
-    static float fAngleX = 0.0f;
-    float fAngleY = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
-    if (GetAsyncKeyState(VK_UP)) { fAngleX += POLY_SPEED; }
-    if (GetAsyncKeyState(VK_DOWN)) { fAngleX -= POLY_SPEED; }
-    
-    auto matRotY = XMMatrixRotationY(fAngleY);
-    auto matRotX = XMMatrixRotationX(fAngleX);
-
-    return matRotY * matRotX;
+    float fAngle = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
+    return XMMatrixRotationY(fAngle);
 }
 
 // Initialize a geometry
@@ -335,6 +362,19 @@ HRESULT InitGeometry(void) {
         return hr;
     }
 
+    // Create index buffer
+    BufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+    BufferDesc.ByteWidth = sizeof(WORD) * MAX_BUFFER_INDEX;
+    BufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    BufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    BufferDesc.MiscFlags = 0;
+
+    SubResourceData.pSysMem = g_wIndices;
+    hr = g_pd3dDevice->CreateBuffer(&BufferDesc, &SubResourceData, &g_pIndexBuffer);
+    if (FAILED(hr)) {
+        return hr;
+    }
+
     return S_OK;
 }
 
@@ -342,6 +382,7 @@ HRESULT InitGeometry(void) {
 
 void Cleanup(void) {
     SAFE_RELEASE(g_pVertexBuffer);
+    SAFE_RELEASE(g_pIndexBuffer);
     SAFE_RELEASE(g_pSamplerState);
     SAFE_RELEASE(g_pbsAlphaBlend);
     SAFE_RELEASE(g_pInputLayout);
@@ -358,7 +399,7 @@ void Cleanup(void) {
 
     SAFE_RELEASE(g_pRTV);
     SAFE_RELEASE(g_pDepthStencil);
-    //SAFE_RELEASE(g_pDepthStencilView);
+    SAFE_RELEASE(g_pDepthStencilView);
 
     if (g_pSwapChain) {
         g_pSwapChain->SetFullscreenState(FALSE, 0);
@@ -391,108 +432,51 @@ void FlushDrawingPictures(void)
         if (SUCCEEDED(hr)) {
             CopyMemory(mappedResource.pData, &(g_cvVertices[0]), sizeof(CUSTOMVERTEX) * g_nVertexNum);
             g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
+
+            hr = g_pImmediateContext->Map(g_pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+            if (SUCCEEDED(hr)) {
+                CopyMemory(mappedResource.pData, &(g_wIndices[0]), sizeof(WORD) * g_nIndexNum);
+                g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
+                g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
+            }
         }
-        //g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
-        g_pImmediateContext->Draw(g_nVertexNum, 0);
     }
 
     g_nVertexNum = 0;
-    g_pNowTexture = NULL;
+    g_nIndexNum = 0;
 
     return;
 }
 
-int Draw3DPolygon(
-    float x1, float y1, float z1, int nColor1,
-    float x2, float y2, float z2, int nColor2,
-    float x3, float y3, float z3, int nColor3
-    )
+void DrawIndexed3DPolygons(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIndices, int nIndexNum)
 {
-    if (g_nVertexNum > (MAX_BUFFER_VERTEX - 3)) {
-        // if the num of vertices are greater than max, draw nothing
-        return -1;
+    CopyMemory(&g_cvVertices[0], pVertices, sizeof(CUSTOMVERTEX) * nVertexNum);
+    for (auto i = 0; i < nIndexNum; ++i) {
+        g_wIndices[g_nIndexNum + i] = *(pIndices + i) + g_nVertexNum;
     }
 
-    if (g_pNowTexture) {
-        FlushDrawingPictures();
-    }
-
-    // Set vertices
-    g_cvVertices[g_nVertexNum + 0].v4Pos = XMFLOAT4(x1, y1, z1, 1.0f);
-    g_cvVertices[g_nVertexNum + 0].v4Color = XMFLOAT4(
-        (float)((nColor1 >> 16) & 0xff) / 255.0f,
-        (float)((nColor1 >> 8) & 0xff) / 255.0f,
-        (float)((nColor1 >> 0) & 0xff) / 255.0f,
-        (float)((nColor1 >> 24) & 0xff) / 255.0f);
-    g_cvVertices[g_nVertexNum + 1].v4Pos = XMFLOAT4(x2, y2, z2, 1.0f);
-    g_cvVertices[g_nVertexNum + 1].v4Color = XMFLOAT4(
-        (float)((nColor2 >> 16) & 0xff) / 255.0f,
-        (float)((nColor2 >> 8) & 0xff) / 255.0f,
-        (float)((nColor2 >> 0) & 0xff) / 255.0f,
-        (float)((nColor2 >> 24) & 0xff) / 255.0f);
-    g_cvVertices[g_nVertexNum + 2].v4Pos = XMFLOAT4(x3, y3, z3, 1.0f);
-    g_cvVertices[g_nVertexNum + 2].v4Color = XMFLOAT4(
-        (float)((nColor3 >> 16) & 0xff) / 255.0f,
-        (float)((nColor3 >> 8) & 0xff) / 255.0f,
-        (float)((nColor3 >> 0) & 0xff) / 255.0f,
-        (float)((nColor3 >> 24) & 0xff) / 255.0f);
-    g_nVertexNum += 3;
-    g_pNowTexture = NULL;
-
-    return 0;
-}
-
-#define CORNER_NUM 20
-#define R 1.0f
-
-XMFLOAT3 ConvertRTPToXYZ(float r, float fTheta, float fPhi) {
-    return XMFLOAT3(
-        r * sinf(fTheta) * cosf(fPhi),
-        r * cosf(fTheta),
-        r * sinf(fTheta) * sinf(fPhi));
-}
-
-XMFLOAT3 RotateXYOnXZ(float x, float y, float fAngle) {
-    return XMFLOAT3(x * cosf(fAngle), y, x * sinf(fAngle));
+    g_nVertexNum += nVertexNum;
+    g_nIndexNum += nIndexNum;
 }
 
 int DrawChangingPictures(void) {
-    float SrcPoints[11][2] = {
-        { 1.8f, 2.0f },
-        { 2.0f, 1.5f },
-        { 1.8f, 1.0f },
-        { 1.0f, 0.5f },
-        { 0.5f, 0.0f },
-        { 0.2f, -0.5f },
-        { 0.2f, -1.7f },
-        { 0.7f, -1.8f },
-        { 1.4f, -1.9f },
-        { 1.5f, -2.0f },
-        { 0.0f, -2.0f }
+    CUSTOMVERTEX Vertices[4];
+    WORD wIndices[6] = {
+        0, 1, 2,
+        0, 1, 3
     };
-    float fAngleDelta = XM_2PI / CORNER_NUM;
-    for (auto i = 0; i < 10; ++i) {
-        auto fTheta1 = 0.0f;
-        auto fTheta2 = fTheta1 + fAngleDelta;
-        
-        for (auto j = 0; j < CORNER_NUM; ++j) {
-            XMFLOAT3 p1 = RotateXYOnXZ(SrcPoints[i][0], SrcPoints[i][1], fTheta1);
-            XMFLOAT3 p2 = RotateXYOnXZ(SrcPoints[i][0], SrcPoints[i][1], fTheta2);
-            XMFLOAT3 p3 = RotateXYOnXZ(SrcPoints[i + 1][0], SrcPoints[i + 1][1], fTheta1);
-            XMFLOAT3 p4 = RotateXYOnXZ(SrcPoints[i + 1][0], SrcPoints[i + 1][1], fTheta2);
 
-            Draw3DPolygon(
-                p1.x, p1.y, p1.z, 0xffff0000,
-                p3.x, p3.y, p3.z, 0xff00ff00,
-                p2.x, p2.y, p2.z, 0xff0000ff);
-            Draw3DPolygon(
-                p2.x, p2.y, p2.z, 0xffff0000,
-                p3.x, p3.y, p3.z, 0xff00ff00,
-                p4.x, p4.y, p4.z, 0xff0000ff);
-            fTheta1 += fAngleDelta;
-            fTheta2 += fAngleDelta;
-        }
-    }
+    // Create vertices data
+    Vertices[0].v4Pos = XMFLOAT4(-1.0f, 1.0f, 0.0f, 1.0f);
+    Vertices[1].v4Pos = XMFLOAT4(1.0f, 1.0f, 0.0f, 1.0f);
+    Vertices[2].v4Pos = XMFLOAT4(0.0f, -1.0f, 1.0f, 1.0f);
+    Vertices[3].v4Pos = XMFLOAT4(0.0f, -1.0f, -1.0f, 1.0f);
+    Vertices[0].v4Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
+    Vertices[1].v4Color = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
+    Vertices[2].v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
+    Vertices[3].v4Color = XMFLOAT4(0.0f, 0.0f, 1.0f, 1.0f);
+
+    DrawIndexed3DPolygons(Vertices, 4, wIndices, 6);
 
     return 0;
 }
@@ -504,6 +488,10 @@ HRESULT Render(void)
     XMFLOAT4 v4Color = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
     g_pImmediateContext->ClearRenderTargetView(g_pRTV, (float*)&v4Color);
 
+    // Clear Z buffer
+
+    g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
+
     // Set sampler and rasterizer
 
     g_pImmediateContext->PSSetSamplers(0, 1, &g_pSamplerState);
@@ -514,6 +502,7 @@ HRESULT Render(void)
     UINT nStrides = sizeof(CUSTOMVERTEX);
     UINT nOffsets = 0;
     g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &nStrides, &nOffsets);
+    g_pImmediateContext->IASetIndexBuffer(g_pIndexBuffer, DXGI_FORMAT_R16_UINT, 0);
     g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_pImmediateContext->IASetInputLayout(g_pInputLayout);
 
