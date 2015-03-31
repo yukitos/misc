@@ -442,21 +442,22 @@ int Draw3DPolygon(
     return 0;
 }
 
-#define R 2.0f
+#define CORNER_NUM 20
+#define R 1.0f
 
 int DrawChangingPictures(void) {
-    float fAngleDelta = XM_PIDIV2;
+    float fAngleDelta = XM_2PI / CORNER_NUM;
     auto fAngle1 = 0.0f;
     auto fAngle2 = fAngleDelta;
-    for (auto i = 0; i < 4; ++i) {
+    for (auto i = 0; i < CORNER_NUM; ++i) {
         Draw3DPolygon(
-            R * cosf(fAngle1), -1.0f, R * sinf(fAngle1), 0xffff0000,
-            R * cosf(fAngle2), -1.0f, R * sinf(fAngle2), 0xff00ff00,
+            R * cosf(fAngle1), 0.0f, R * sinf(fAngle1), 0xffff0000,
+            R * cosf(fAngle2), 0.0f, R * sinf(fAngle2), 0xff00ff00,
             0.0f, 1.0f, 0.0f, 0xff0000ff);
         Draw3DPolygon(
-            R * cosf(fAngle2), -1.0f, R * sinf(fAngle2), 0xffff0000,
-            R * cosf(fAngle1), -1.0f, R * sinf(fAngle1), 0xff00ff00,
-            0.0f, -1.0f, 0.0f, 0xff0000ff);
+            R * cosf(fAngle2), 0.0f, R * sinf(fAngle2), 0xffff0000,
+            R * cosf(fAngle1), 0.0f, R * sinf(fAngle1), 0xff00ff00,
+            0.0f, 0.0f, 0.0f, 0xff0000ff);
         fAngle1 += fAngleDelta;
         fAngle2 += fAngleDelta;
     }
