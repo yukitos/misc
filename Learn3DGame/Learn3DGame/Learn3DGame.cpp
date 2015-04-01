@@ -474,31 +474,54 @@ void DrawIndexed3DPolygons(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIndic
 }
 
 #define R 2.0f
+#define CORNER_NUM 20
 
 int DrawChangingPictures(void) {
-    CUSTOMVERTEX Vertices[5];
-    WORD wIndices[4 * 3];
+    CUSTOMVERTEX Vertices[CORNER_NUM * (CORNER_NUM / 2 + 1)];
+    WORD wIndices[CORNER_NUM * CORNER_NUM / 2 * 2 * 3];
 
     // Create vertices data
-    Vertices[0].v4Pos = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
-    Vertices[0].v4Color = XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
-    auto fAngleDelta = XM_2PI / 4.0f;
+
+    auto fAngleDelta = XM_2PI / CORNER_NUM;
     auto fAngle = 0.0f;
-    for (auto i = 0; i < 4; ++i) {
-        Vertices[i + 1].v4Pos = XMFLOAT4(R * cosf(fAngle), -1.0f, R * sinf(fAngle), 1.0f);
-        Vertices[i + 1].v4Color = XMFLOAT4(0.0f, (float)(i & 1), (float)((i + 1) & 1), 1.0f);
-        fAngle += fAngleDelta;
-    }
-
     auto nIndex = 0;
-    for (auto i = 1; i <= 4; ++i) {
-        wIndices[nIndex + 0] = 0;
-        wIndices[nIndex + 1] = i;
-        wIndices[nIndex + 2] = (i % 4) + 1;
-        nIndex += 3;
+    auto fTheta = 0.0f;
+    for (auto i = 0; i < CORNER_NUM / 2 + 1; ++i) {
+        auto fPhi = 0.0f;
+        for (auto j = 0; j < CORNER_NUM; ++j) {
+            Vertices[nIndex].v4Pos = XMFLOAT4(
+                R * sinf(fTheta) * cosf(fPhi),
+                R * cosf(fTheta),
+                R * sinf(fTheta) * sinf(fPhi),
+                1.0f);
+            Vertices[nIndex].v4Color = XMFLOAT4(
+                0.0f, (float)(i & 1), (float)((i + 1) & 1), 1.0f);
+            nIndex++;
+            fPhi += fAngleDelta;
+        }
+        fTheta += fAngleDelta;
     }
 
-    DrawIndexed3DPolygons(Vertices, 5, wIndices, 4 * 3);
+    // Create indices data
+
+    nIndex = 0;
+    for (auto i = 0; i < CORNER_NUM / 2; ++i) {
+        auto nIndexY = i * CORNER_NUM;
+        for (auto j = 0; j < CORNER_NUM; ++ j) {
+            wIndices[nIndex + 0] = nIndexY + j;
+            wIndices[nIndex + 1] = nIndexY + CORNER_NUM + j;
+            wIndices[nIndex + 2] = nIndexY + ((j + 1) % CORNER_NUM);
+            nIndex += 3;
+            wIndices[nIndex + 0] = nIndexY + ((j + 1) % CORNER_NUM);
+            wIndices[nIndex + 1] = nIndexY + CORNER_NUM + j;
+            wIndices[nIndex + 2] = nIndexY + CORNER_NUM + ((j + 1) % CORNER_NUM);
+            nIndex += 3;
+        }
+    }
+
+    DrawIndexed3DPolygons(
+        Vertices, CORNER_NUM * (CORNER_NUM / 2 + 1),
+        wIndices, CORNER_NUM * CORNER_NUM / 2 * 2 * 3);
 
     return 0;
 }
