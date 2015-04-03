@@ -17,6 +17,9 @@
 #pragma comment(lib, "d3dx11.lib")
 #pragma comment(lib, "winmm.lib")
 
+#define MAX_BUFFER_VERTEX 10000
+#define MAX_BUFFER_INDEX 20000
+
 #define VIEW_WIDTH 800
 #define VIEW_HEIGHT 600
 
