@@ -4,7 +4,9 @@
 #include "stdafx.h"
 #include "Learn3DGame.h"
 
-#define SCALE_SPEED 0.02f
+#define ROT_SPEED 0.02f
+#define CORNER_NUM 50
+#define R 2.0f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
@@ -420,7 +422,7 @@ HRESULT InitGeometry(void)
     }
 
     g_tTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("3.bmp"), &g_tTexture, 480, 480, 512, 512);
+    hr = LoadTexture(_T("4.bmp"), &g_tTexture, 1152, 576, 1024, 512);
     if (FAILED(hr)) {
         ShowError(_T("Failed to load texture"));
         return hr;
@@ -488,43 +490,62 @@ void DrawIndexed3DPolygonsTex(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIn
 
 XMMATRIX CreateWorldMatrix(void)
 {
-    float fAngle = 0.0f;// XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
-    return XMMatrixRotationY(fAngle);
+    static float fAngleX = 0.0f;
+    float fAngleY = -XM_2PI * (float)(timeGetTime() % 3000) / 3000.0f;
+
+    if (GetAsyncKeyState(VK_UP)) {
+        fAngleX += ROT_SPEED;
+    }
+    if (GetAsyncKeyState(VK_DOWN)) {
+        fAngleX -= ROT_SPEED;
+    }
+
+    auto matRotY = XMMatrixRotationY(fAngleY);
+    auto matRotX = XMMatrixRotationX(fAngleX);
+
+    return matRotY * matRotX;
 }
 
 void DrawChangingPictures(void)
 {
-    CUSTOMVERTEX Vertices[4];
-    WORD wIndices[6] = {
-        0, 1, 2,
-        2, 1, 3 };
-    static float fTexScaleX = 0.0f;
-    static float fTexScaleY = 0.0f;
+    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM / 2 + 1)];
+    WORD wIndices[CORNER_NUM * CORNER_NUM / 2 * 2 * 3];
 
-    Vertices[0].v4Pos = XMFLOAT4(-OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f);
-    Vertices[1].v4Pos = XMFLOAT4(OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f);
-    Vertices[2].v4Pos = XMFLOAT4(-OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f);
-    Vertices[3].v4Pos = XMFLOAT4(OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f);
+    auto fAngleDelta = XM_2PI / CORNER_NUM;
+    auto nIndex = 0;
+    auto fTheta = 0.0f;
 
-    if (GetAsyncKeyState(VK_RIGHT)) {
-        fTexScaleX += SCALE_SPEED;
+    for (auto i = 0; i < CORNER_NUM / 2 + 1; ++i) {
+        auto fPhi = 0.0f;
+        for (auto j = 0; j < CORNER_NUM + 1; ++j) {
+            Vertices[nIndex].v4Pos = XMFLOAT4(
+                R * sinf(fTheta) * cosf(fPhi),
+                R * cosf(fTheta),
+                R * sinf(fTheta) * sinf(fPhi), 1.0f);
+            Vertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
+            nIndex++;
+            fPhi += fAngleDelta;
+        }
+        fTheta += fAngleDelta;
     }
-    if (GetAsyncKeyState(VK_LEFT)) {
-        fTexScaleX -= SCALE_SPEED;
-    }
-    if (GetAsyncKeyState(VK_DOWN)) {
-        fTexScaleY += SCALE_SPEED;
-    }
-    if (GetAsyncKeyState(VK_UP)) {
-        fTexScaleY -= SCALE_SPEED;
-    }
-    
-    Vertices[0].v2UV = XMFLOAT2(fTexScaleX + 0.0f, fTexScaleY + 0.0f);
-    Vertices[1].v2UV = XMFLOAT2(fTexScaleX + 1.0f, fTexScaleY + 0.0f);
-    Vertices[2].v2UV = XMFLOAT2(fTexScaleX + 0.0f, fTexScaleY + 1.0f);
-    Vertices[3].v2UV = XMFLOAT2(fTexScaleX + 1.0f, fTexScaleY + 1.0f);
 
-    DrawIndexed3DPolygonsTex(Vertices, 4, wIndices, 6);
+    nIndex = 0;
+    for (auto i = 0; i < CORNER_NUM / 2; ++i) {
+        auto nIndexY = i * (CORNER_NUM + 1);
+        for (auto j = 0; j < CORNER_NUM; ++j) {
+            wIndices[nIndex + 0] = nIndexY + j;
+            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
+            wIndices[nIndex + 2] = nIndexY + j + 1;
+            nIndex += 3;
+            wIndices[nIndex + 0] = nIndexY + j + 1;
+            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
+            wIndices[nIndex + 2] = nIndexY + (CORNER_NUM + 1) + j + 1;
+            nIndex += 3;
+        }
+    }
+
+    DrawIndexed3DPolygonsTex(Vertices, ARRAYSIZE(Vertices),
+        wIndices, ARRAYSIZE(wIndices));
 }
 
 void FlushDrawingPictures(void)
