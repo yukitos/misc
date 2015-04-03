@@ -4,6 +4,8 @@
 #include "stdafx.h"
 #include "Learn3DGame.h"
 
+#define SCALE_SPEED 0.02f
+
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
     XMFLOAT2 v2UV;
@@ -367,8 +369,8 @@ int InitDrawModes(void)
         D3D11_SAMPLER_DESC desc;
         ZeroMemory(&desc, sizeof(desc));
         desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
-        desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+        desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+        desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
         desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
         desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
         desc.MaxLOD = D3D11_FLOAT32_MAX;
@@ -486,7 +488,7 @@ void DrawIndexed3DPolygonsTex(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIn
 
 XMMATRIX CreateWorldMatrix(void)
 {
-    float fAngle = XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
+    float fAngle = 0.0f;// XM_2PI * (float)(timeGetTime() % 2000) / 2000.0f;
     return XMMatrixRotationY(fAngle);
 }
 
@@ -496,15 +498,31 @@ void DrawChangingPictures(void)
     WORD wIndices[6] = {
         0, 1, 2,
         2, 1, 3 };
+    static float fTexScaleX = 0.0f;
+    static float fTexScaleY = 0.0f;
 
     Vertices[0].v4Pos = XMFLOAT4(-OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f);
     Vertices[1].v4Pos = XMFLOAT4(OBJECT_SIZE, OBJECT_SIZE, 0.0f, 1.0f);
     Vertices[2].v4Pos = XMFLOAT4(-OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f);
     Vertices[3].v4Pos = XMFLOAT4(OBJECT_SIZE, -OBJECT_SIZE, 0.0f, 1.0f);
-    Vertices[0].v2UV = XMFLOAT2(0.0f, 0.0f);
-    Vertices[1].v2UV = XMFLOAT2(1.0f, 0.0f);
-    Vertices[2].v2UV = XMFLOAT2(0.0f, 1.0f);
-    Vertices[3].v2UV = XMFLOAT2(1.0f, 1.0f);
+
+    if (GetAsyncKeyState(VK_RIGHT)) {
+        fTexScaleX += SCALE_SPEED;
+    }
+    if (GetAsyncKeyState(VK_LEFT)) {
+        fTexScaleX -= SCALE_SPEED;
+    }
+    if (GetAsyncKeyState(VK_DOWN)) {
+        fTexScaleY += SCALE_SPEED;
+    }
+    if (GetAsyncKeyState(VK_UP)) {
+        fTexScaleY -= SCALE_SPEED;
+    }
+    
+    Vertices[0].v2UV = XMFLOAT2(fTexScaleX + 0.0f, fTexScaleY + 0.0f);
+    Vertices[1].v2UV = XMFLOAT2(fTexScaleX + 1.0f, fTexScaleY + 0.0f);
+    Vertices[2].v2UV = XMFLOAT2(fTexScaleX + 0.0f, fTexScaleY + 1.0f);
+    Vertices[3].v2UV = XMFLOAT2(fTexScaleX + 1.0f, fTexScaleY + 1.0f);
 
     DrawIndexed3DPolygonsTex(Vertices, 4, wIndices, 6);
 }
