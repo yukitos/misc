@@ -7,19 +7,17 @@
 #define ROT_SPEED (XM_PI / 100.0f)
 #define CORNER_NUM 50
 #define R 2.0f
+#define TRANS_SPEED 0.3f
+#define CYLINDER_LENGTH 20.0f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
-    XMFLOAT3 v3Normal;
+    XMFLOAT2 v2UV;
 };
 
 struct CBNeverChanges
 {
     XMMATRIX matView;
-    XMMATRIX matWorld;
-    XMFLOAT3 v3Light;
-    float fAmbient;
-    float fDirectional;
 };
 
 struct TEX_PICTURE
@@ -230,7 +228,7 @@ HRESULT MakeShaders(void) {
     ID3DBlob *pPixelShaderBuffer = nullptr;
     ID3DBlob *pError = nullptr;
 
-    LPTSTR fileName = _T("Basic_3D_Light.fx");
+    LPTSTR fileName = _T("Basic_3D_Tex.fx");
 
     DWORD dwShaderFlags = 0;
 #ifdef DEBUG
@@ -277,7 +275,7 @@ HRESULT MakeShaders(void) {
     {
         D3D11_INPUT_ELEMENT_DESC desc[] = {
             { "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+            { "TEXTURE", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0 },
         };
         UINT numElements = ARRAYSIZE(desc);
         hr = g_pd3dDevice->CreateInputLayout(desc, numElements,
@@ -426,11 +424,11 @@ HRESULT InitGeometry(void)
     }
 
     g_tTexture.pSRViewTexture = nullptr;
-    //hr = LoadTexture(_T("4.bmp"), &g_tTexture, 1152, 576, 1024, 512);
-    //if (FAILED(hr)) {
-    //    ShowError(_T("Failed to load texture"));
-    //    return hr;
-    //}
+    hr = LoadTexture(_T("Stream.bmp"), &g_tTexture, 1152, 576, 1024, 512);
+    if (FAILED(hr)) {
+        ShowError(_T("Failed to load texture"));
+        return hr;
+    }
 
     return S_OK;
 }
@@ -494,58 +492,56 @@ void DrawIndexed3DPolygonsTex(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIn
 
 XMMATRIX CreateWorldMatrix(void)
 {
-    static float fAngleX = 0.0f;
-    float fAngleY = -XM_2PI * (float)(timeGetTime() % 3000) / 3000.0f;
+    static float fAngleY = 0.0f;
+    static float fEffectY = 0.0f;
 
     if (GetAsyncKeyState(VK_UP)) {
-        fAngleX += ROT_SPEED;
+        fEffectY -= TRANS_SPEED;
     }
     if (GetAsyncKeyState(VK_DOWN)) {
-        fAngleX -= ROT_SPEED;
+        fEffectY += TRANS_SPEED;
+    }
+    if (GetAsyncKeyState(VK_LEFT)) {
+        fAngleY += ROT_SPEED;
+    }
+    if (GetAsyncKeyState(VK_RIGHT)) {
+        fAngleY -= ROT_SPEED;
     }
 
     auto matRotY = XMMatrixRotationY(fAngleY);
-    auto matRotX = XMMatrixRotationX(fAngleX);
+    matRotY._43 = fEffectY;
 
-    return matRotY * matRotX;
+    return matRotY;
 }
 
 void DrawChangingPictures(void)
 {
-    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM / 2 + 1)];
-    WORD wIndices[CORNER_NUM * CORNER_NUM * 3];
+    CUSTOMVERTEX Vertices[2 * (CORNER_NUM + 1)];
+    WORD wIndices[CORNER_NUM * 2 * 3];
 
+    auto vs = (timeGetTime() % 500) / 500.0f;
     auto fAngleDelta = XM_2PI / CORNER_NUM;
     auto nIndex = 0;
-    auto fTheta = 0.0f;
-
-    for (auto i = 0; i < CORNER_NUM / 2 + 1; ++i) {
-        auto fPhi = 0.0f;
+    for (auto i = 0; i < 2; ++i) {
+        auto fTheta = 0.0f;
         for (auto j = 0; j < CORNER_NUM + 1; ++j) {
-            auto x = R * sinf(fTheta) * cosf(fPhi);
-            auto y = R * cosf(fTheta);
-            auto z = R * sinf(fTheta) * sinf(fPhi);
-            Vertices[nIndex].v4Pos = XMFLOAT4(x, y, z, 1.0f);
-            Vertices[nIndex].v3Normal = XMFLOAT3(x / R, y / R, z / R);
+            Vertices[nIndex].v4Pos = XMFLOAT4(R * cosf(fTheta), R * sinf(fTheta), CYLINDER_LENGTH * i, 1.0f);
+            Vertices[nIndex].v2UV = XMFLOAT2(fTheta / XM_2PI, vs + (float)i);
             nIndex++;
-            fPhi += fAngleDelta;
+            fTheta += fAngleDelta;
         }
-        fTheta += fAngleDelta;
     }
 
     nIndex = 0;
-    for (auto i = 0; i < CORNER_NUM / 2; ++i) {
-        auto nIndexY = i * (CORNER_NUM + 1);
-        for (auto j = 0; j < CORNER_NUM; ++j) {
-            wIndices[nIndex + 0] = nIndexY + j;
-            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
-            wIndices[nIndex + 2] = nIndexY + j + 1;
-            nIndex += 3;
-            wIndices[nIndex + 0] = nIndexY + j + 1;
-            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
-            wIndices[nIndex + 2] = nIndexY + (CORNER_NUM + 1) + j + 1;
-            nIndex += 3;
-        }
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        wIndices[nIndex + 0] = i;
+        wIndices[nIndex + 1] = (CORNER_NUM + 1) + i;
+        wIndices[nIndex + 2] = i + 1;
+        
+        wIndices[nIndex + 3] = i + 1;
+        wIndices[nIndex + 4] = (CORNER_NUM + 1) + i;
+        wIndices[nIndex + 5] = (CORNER_NUM + 1) + i + 1;
+        nIndex += 6;
     }
 
     DrawIndexed3DPolygonsTex(Vertices, ARRAYSIZE(Vertices),
@@ -556,7 +552,7 @@ void FlushDrawingPictures(void)
 {
     HRESULT hr;
 
-    if ((g_nVertexNum > 0) /*&& g_pNowTexture*/) {
+    if ((g_nVertexNum > 0) && g_pNowTexture) {
         D3D11_MAPPED_SUBRESOURCE mappedResource;
         hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
         if (SUCCEEDED(hr)){
@@ -568,7 +564,7 @@ void FlushDrawingPictures(void)
                 CopyMemory(mappedResource.pData, &g_wIndices[0], sizeof(WORD) * g_nIndexNum);
                 g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
 
-                //g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
+                g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
                 g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
             }
         }
@@ -600,8 +596,8 @@ void Render(void) {
 
     XMMATRIX matWorld = CreateWorldMatrix();
 
-    XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
-    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
 
@@ -609,10 +605,6 @@ void Render(void) {
 
     CBNeverChanges cbNeverChanges;
     cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
-    cbNeverChanges.matWorld = XMMatrixTranspose(matWorld);
-    cbNeverChanges.v3Light = XMFLOAT3(-1.0f / sqrtf(3.0f), 1.0f / sqrtf(3.0f), -1.0f / sqrtf(3.0f));
-    cbNeverChanges.fAmbient = 0.2f;
-    cbNeverChanges.fDirectional = 0.8f;
     g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
