@@ -516,17 +516,18 @@ XMMATRIX CreateWorldMatrix(void)
 
 void DrawChangingPictures(void)
 {
-    CUSTOMVERTEX Vertices[2 * (CORNER_NUM + 1)];
-    WORD wIndices[CORNER_NUM * 2 * 3];
+    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM + 1)];
+    WORD wIndices[CORNER_NUM * CORNER_NUM * 2 * 3];
 
     auto vs = (timeGetTime() % 500) / 500.0f;
     auto fAngleDelta = XM_2PI / CORNER_NUM;
     auto nIndex = 0;
-    for (auto i = 0; i < 2; ++i) {
+    for (auto i = 0; i < CORNER_NUM + 1; ++i) {
         auto fTheta = 0.0f;
+        auto nr = 1.0f * sqrtf((float)(CORNER_NUM - i));
         for (auto j = 0; j < CORNER_NUM + 1; ++j) {
-            Vertices[nIndex].v4Pos = XMFLOAT4(R * cosf(fTheta), R * sinf(fTheta), CYLINDER_LENGTH * i, 1.0f);
-            Vertices[nIndex].v2UV = XMFLOAT2(fTheta / XM_2PI, vs + (float)i);
+            Vertices[nIndex].v4Pos = XMFLOAT4(nr * cosf(fTheta), nr * sinf(fTheta), CYLINDER_LENGTH * i / CORNER_NUM, 1.0f);
+            Vertices[nIndex].v2UV = XMFLOAT2(fTheta / XM_2PI, vs + (float)i / CORNER_NUM);
             nIndex++;
             fTheta += fAngleDelta;
         }
@@ -534,14 +535,17 @@ void DrawChangingPictures(void)
 
     nIndex = 0;
     for (auto i = 0; i < CORNER_NUM; ++i) {
-        wIndices[nIndex + 0] = i;
-        wIndices[nIndex + 1] = (CORNER_NUM + 1) + i;
-        wIndices[nIndex + 2] = i + 1;
-        
-        wIndices[nIndex + 3] = i + 1;
-        wIndices[nIndex + 4] = (CORNER_NUM + 1) + i;
-        wIndices[nIndex + 5] = (CORNER_NUM + 1) + i + 1;
-        nIndex += 6;
+        auto nIndexY = i * (CORNER_NUM + 1);
+        for (auto j = 0; j < CORNER_NUM; ++j) {
+            wIndices[nIndex + 0] = nIndexY + j;
+            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
+            wIndices[nIndex + 2] = nIndexY + j + 1;
+
+            wIndices[nIndex + 3] = nIndexY + j + 1;
+            wIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + j;
+            wIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + j + 1;
+            nIndex += 6;
+        }
     }
 
     DrawIndexed3DPolygonsTex(Vertices, ARRAYSIZE(Vertices),
@@ -601,7 +605,7 @@ void Render(void) {
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
 
-    XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 100.0f);
+    XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 1000.0f);
 
     CBNeverChanges cbNeverChanges;
     cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
