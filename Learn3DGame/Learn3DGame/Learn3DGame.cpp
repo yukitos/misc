@@ -39,11 +39,12 @@ ID3D11RasterizerState *g_pRS;
 ID3D11RenderTargetView *g_pRTV;
 ID3D11Texture2D *g_pDepthStencil;
 ID3D11DepthStencilView *g_pDepthStencilView;
+ID3D11DepthStencilState *g_pDepthStencilState;
 D3D_FEATURE_LEVEL g_FeatureLevel;
 
 ID3D11Buffer *g_pVertexBuffer;
 ID3D11Buffer *g_pIndexBuffer;
-ID3D11BlendState *g_pbsAlphaBlend;
+ID3D11BlendState *g_pbsAddBlend;
 ID3D11VertexShader *g_pVertexShader;
 ID3D11PixelShader *g_pPixelShader;
 ID3D11InputLayout *g_pInputLayout;
@@ -192,7 +193,7 @@ HRESULT InitD3D(void) {
         }
     }
 
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL/*g_pDepthStencilView*/);
 
     {
         D3D11_RASTERIZER_DESC desc;
@@ -355,14 +356,14 @@ int InitDrawModes(void)
         desc.AlphaToCoverageEnable = FALSE;
         desc.IndependentBlendEnable = FALSE;
         desc.RenderTarget[0].BlendEnable = TRUE;
-        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
-        desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
         desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
         desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
         desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
         desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
         desc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
-        hr = g_pd3dDevice->CreateBlendState(&desc, &g_pbsAlphaBlend);
+        hr = g_pd3dDevice->CreateBlendState(&desc, &g_pbsAddBlend);
         if (FAILED(hr)) {
             ShowError(_T("Failed to create blend state"));
             return hr;
@@ -424,7 +425,7 @@ HRESULT InitGeometry(void)
     }
 
     g_tTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("Stream.bmp"), &g_tTexture, 1152, 576, 1024, 512);
+    hr = LoadTexture(_T("6.bmp"), &g_tTexture, 512, 512, 512, 512);
     if (FAILED(hr)) {
         ShowError(_T("Failed to load texture"));
         return hr;
@@ -440,7 +441,7 @@ void Cleanup(void)
     SAFE_RELEASE(g_pIndexBuffer);
 
     SAFE_RELEASE(g_pSamplerState);
-    SAFE_RELEASE(g_pbsAlphaBlend);
+    SAFE_RELEASE(g_pbsAddBlend);
     SAFE_RELEASE(g_pInputLayout);
     SAFE_RELEASE(g_pPixelShader);
     SAFE_RELEASE(g_pVertexShader);
@@ -455,6 +456,7 @@ void Cleanup(void)
     SAFE_RELEASE(g_pRTV);
     SAFE_RELEASE(g_pDepthStencil);
     SAFE_RELEASE(g_pDepthStencilView);
+    SAFE_RELEASE(g_pDepthStencilState);
 
     if (g_pSwapChain) {
         g_pSwapChain->SetFullscreenState(FALSE, 0);
@@ -492,58 +494,56 @@ void DrawIndexed3DPolygonsTex(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIn
 
 XMMATRIX CreateWorldMatrix(void)
 {
-    static float fAngleY = 0.0f;
-    static float fEffectY = 0.0f;
+    static float fAngleX = 0.0f;
+
+    float fAngleY = XM_2PI * (float)(timeGetTime() % 3000) / 3000.0f;
 
     if (GetAsyncKeyState(VK_UP)) {
-        fEffectY -= TRANS_SPEED;
+        fAngleX += ROT_SPEED;
     }
     if (GetAsyncKeyState(VK_DOWN)) {
-        fEffectY += TRANS_SPEED;
-    }
-    if (GetAsyncKeyState(VK_LEFT)) {
-        fAngleY += ROT_SPEED;
-    }
-    if (GetAsyncKeyState(VK_RIGHT)) {
-        fAngleY -= ROT_SPEED;
+        fAngleX -= ROT_SPEED;
     }
 
     auto matRotY = XMMatrixRotationY(fAngleY);
-    matRotY._43 = fEffectY;
+    auto matRotX = XMMatrixRotationX(fAngleX);
 
-    return matRotY;
+    return matRotY * matRotX;
 }
 
 void DrawChangingPictures(void)
 {
-    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM + 1)];
-    WORD wIndices[CORNER_NUM * CORNER_NUM * 2 * 3];
+    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM / 4 + 1)];
+    WORD wIndices[CORNER_NUM * CORNER_NUM / 4 * 2 * 3];
 
-    auto vs = (timeGetTime() % 500) / 500.0f;
     auto fAngleDelta = XM_2PI / CORNER_NUM;
     auto nIndex = 0;
-    for (auto i = 0; i < CORNER_NUM + 1; ++i) {
-        auto fTheta = 0.0f;
-        auto nr = 1.0f * sqrtf((float)(CORNER_NUM - i));
+    auto fTheta = 0.0f;
+    for (auto i = 0; i < CORNER_NUM / 4 + 1; ++i) {
+        auto fPhi = 0.0f;
         for (auto j = 0; j < CORNER_NUM + 1; ++j) {
-            Vertices[nIndex].v4Pos = XMFLOAT4(nr * cosf(fTheta), nr * sinf(fTheta), CYLINDER_LENGTH * i / CORNER_NUM, 1.0f);
-            Vertices[nIndex].v2UV = XMFLOAT2(fTheta / XM_2PI, vs + (float)i / CORNER_NUM);
+            Vertices[nIndex].v4Pos = XMFLOAT4(
+                R * sinf(fTheta) * cosf(fPhi),
+                R * cosf(fTheta),
+                R * sinf(fTheta) * sinf(fPhi), 1.0f);
+            Vertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
             nIndex++;
-            fTheta += fAngleDelta;
+            fPhi += fAngleDelta;
         }
+        fTheta += fAngleDelta;
     }
 
     nIndex = 0;
     for (auto i = 0; i < CORNER_NUM; ++i) {
-        auto nIndexY = i * (CORNER_NUM + 1);
-        for (auto j = 0; j < CORNER_NUM; ++j) {
-            wIndices[nIndex + 0] = nIndexY + j;
-            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + j;
-            wIndices[nIndex + 2] = nIndexY + j + 1;
+        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
+            auto nIndexY = j * (CORNER_NUM + 1);
+            wIndices[nIndex + 0] = nIndexY + i;
+            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + i;
+            wIndices[nIndex + 2] = nIndexY + i + 1;
 
-            wIndices[nIndex + 3] = nIndexY + j + 1;
-            wIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + j;
-            wIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + j + 1;
+            wIndices[nIndex + 3] = nIndexY + i + 1;
+            wIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + i;
+            wIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + i + 1;
             nIndex += 6;
         }
     }
@@ -600,8 +600,8 @@ void Render(void) {
 
     XMMATRIX matWorld = CreateWorldMatrix();
 
-    XMVECTOR Eye = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
 
@@ -611,7 +611,7 @@ void Render(void) {
     cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
     g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
 
-    g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+    g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, NULL, 0xFFFFFFFF);
     DrawChangingPictures();
 
     FlushDrawingPictures();
