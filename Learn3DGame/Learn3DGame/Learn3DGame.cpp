@@ -193,7 +193,36 @@ HRESULT InitD3D(void) {
         }
     }
 
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL/*g_pDepthStencilView*/);
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
+    
+    {
+        D3D11_DEPTH_STENCIL_DESC desc;
+        ZeroMemory(&desc, sizeof(desc));
+        desc.DepthEnable = true;
+        desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+        desc.DepthFunc = D3D11_COMPARISON_LESS;
+
+        desc.StencilEnable = true;
+        desc.StencilReadMask = 0xFF;
+        desc.StencilWriteMask = 0xFF;
+
+        desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+        desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+
+        desc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+        desc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+        desc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+        desc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+
+        hr = g_pd3dDevice->CreateDepthStencilState(&desc, &g_pDepthStencilState);
+        if (FAILED(hr)) {
+            ShowError(_T("Failed to create depth stencil state."));
+            return hr;
+        }
+        g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
+    }
 
     {
         D3D11_RASTERIZER_DESC desc;
