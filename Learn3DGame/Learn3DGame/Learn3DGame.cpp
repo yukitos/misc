@@ -6,9 +6,15 @@
 
 #define ROT_SPEED (XM_PI / 100.0f)
 #define CORNER_NUM 50
-#define R 2.0f
+#define R 1.0f
 #define TRANS_SPEED 0.3f
 #define CYLINDER_LENGTH 20.0f
+#define MAX_EXPLOSION_NUM 10
+#define EXPLOSION_INTERVAL 200
+#define EXPLOSION_AREA 4.0f
+#define EXPLOSION_SPEED 0.05f
+#define EXPLOSION_R1 1.0f
+#define EXPLOSION_R2 2.0f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
@@ -19,6 +25,17 @@ struct CBNeverChanges
 {
     XMMATRIX matView;
 };
+
+struct Explosion {
+    int bActive;
+    int nTime;
+    XMFLOAT3 v3CenterPos;
+    float fRadius;
+    float fAngle;
+    XMMATRIX matMatrix;
+    float fBright;
+};
+Explosion exExplode[MAX_EXPLOSION_NUM];
 
 struct TEX_PICTURE
 {
@@ -385,7 +402,7 @@ int InitDrawModes(void)
         desc.AlphaToCoverageEnable = FALSE;
         desc.IndependentBlendEnable = FALSE;
         desc.RenderTarget[0].BlendEnable = TRUE;
-        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_BLEND_FACTOR;
         desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
         desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
         desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
@@ -416,6 +433,46 @@ int InitDrawModes(void)
     }
 
     return S_OK;
+}
+
+void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
+    WORD *pIndices, int *pIndexNum)
+{
+    auto fAngleDelta = XM_2PI / CORNER_NUM;
+    auto nIndex = 0;
+    auto fTheta = 0.0f;
+
+    for (auto i = 0; i < CORNER_NUM / 4; ++i) {
+        auto fPhi = 0.0f;
+        for (auto j = 0; j < CORNER_NUM + 1; ++j) {
+            pVertices[nIndex].v4Pos = XMFLOAT4(
+                R * sinf(fTheta) * cosf(fPhi),
+                R * cosf(fTheta),
+                R * sinf(fTheta) * sinf(fPhi), 1.0f);
+            pVertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
+            nIndex++;
+            fPhi += fAngleDelta;
+        }
+        fTheta += fAngleDelta;
+    }
+    *pVertexNum = nIndex;
+
+    nIndex = 0;
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
+            auto nIndexY = j * (CORNER_NUM + 1);
+            pIndices[nIndex + 0] = nIndexY + i;
+            pIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 2] = nIndexY + i + 1;
+
+            pIndices[nIndex + 3] = nIndexY + i + 1;
+            pIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + i + 1;
+            nIndex += 6;
+
+        }
+    }
+    *pIndexNum = nIndex;
 }
 
 HRESULT InitGeometry(void)
@@ -451,6 +508,25 @@ HRESULT InitGeometry(void)
     if (FAILED(hr)) {
         ShowError(_T("Failed to create index buffer"));
         return hr;
+    }
+
+    {
+        D3D11_MAPPED_SUBRESOURCE mappedVertices, mappedIndices;
+        hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVertices);
+        if (FAILED(hr)) {
+            ShowError(_T("Failed to map vertices."));
+            return hr;
+        }
+        hr = g_pImmediateContext->Map(g_pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedIndices);
+        if (FAILED(hr)) {
+            g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
+            ShowError(_T("Failed to map indices."));
+            return hr;
+        }
+        MakeSphereIndexed((CUSTOMVERTEX*)mappedVertices.pData, &g_nVertexNum,
+            (WORD*)mappedIndices.pData, &g_nIndexNum);
+        g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
+        g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
     }
 
     g_tTexture.pSRViewTexture = nullptr;
@@ -508,103 +584,48 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-void DrawIndexed3DPolygonsTex(CUSTOMVERTEX *pVertices, int nVertexNum, WORD *pIndices, int nIndexNum)
-{
-    CopyMemory(&g_cvVertices[0], pVertices, sizeof(CUSTOMVERTEX) * nVertexNum);
-    for (auto i = 0; i < nIndexNum; ++i) {
-        g_wIndices[g_nIndexNum + i] = *(pIndices + i) + g_nVertexNum;
-    }
+void MoveExplorsion(void) {
+    static int nLastTime = 0;
 
-    g_nVertexNum += nVertexNum;
-    g_nIndexNum += nIndexNum;
-
-    g_pNowTexture = g_tTexture.pSRViewTexture;
-}
-
-XMMATRIX CreateWorldMatrix(void)
-{
-    static float fAngleX = 0.0f;
-
-    float fAngleY = XM_2PI * (float)(timeGetTime() % 3000) / 3000.0f;
-
-    if (GetAsyncKeyState(VK_UP)) {
-        fAngleX += ROT_SPEED;
-    }
-    if (GetAsyncKeyState(VK_DOWN)) {
-        fAngleX -= ROT_SPEED;
-    }
-
-    auto matRotY = XMMatrixRotationY(fAngleY);
-    auto matRotX = XMMatrixRotationX(fAngleX);
-
-    return matRotY * matRotX;
-}
-
-void DrawChangingPictures(void)
-{
-    CUSTOMVERTEX Vertices[(CORNER_NUM + 1) * (CORNER_NUM / 4 + 1)];
-    WORD wIndices[CORNER_NUM * CORNER_NUM / 4 * 2 * 3];
-
-    auto fAngleDelta = XM_2PI / CORNER_NUM;
-    auto nIndex = 0;
-    auto fTheta = 0.0f;
-    for (auto i = 0; i < CORNER_NUM / 4 + 1; ++i) {
-        auto fPhi = 0.0f;
-        for (auto j = 0; j < CORNER_NUM + 1; ++j) {
-            Vertices[nIndex].v4Pos = XMFLOAT4(
-                R * sinf(fTheta) * cosf(fPhi),
-                R * cosf(fTheta),
-                R * sinf(fTheta) * sinf(fPhi), 1.0f);
-            Vertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
-            nIndex++;
-            fPhi += fAngleDelta;
-        }
-        fTheta += fAngleDelta;
-    }
-
-    nIndex = 0;
-    for (auto i = 0; i < CORNER_NUM; ++i) {
-        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
-            auto nIndexY = j * (CORNER_NUM + 1);
-            wIndices[nIndex + 0] = nIndexY + i;
-            wIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + i;
-            wIndices[nIndex + 2] = nIndexY + i + 1;
-
-            wIndices[nIndex + 3] = nIndexY + i + 1;
-            wIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + i;
-            wIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + i + 1;
-            nIndex += 6;
-        }
-    }
-
-    DrawIndexed3DPolygonsTex(Vertices, ARRAYSIZE(Vertices),
-        wIndices, ARRAYSIZE(wIndices));
-}
-
-void FlushDrawingPictures(void)
-{
-    HRESULT hr;
-
-    if ((g_nVertexNum > 0) && g_pNowTexture) {
-        D3D11_MAPPED_SUBRESOURCE mappedResource;
-        hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-        if (SUCCEEDED(hr)){
-            CopyMemory(mappedResource.pData, &g_cvVertices[0], sizeof(CUSTOMVERTEX) * g_nVertexNum);
-            g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
-
-            hr = g_pImmediateContext->Map(g_pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
-            if (SUCCEEDED(hr)) {
-                CopyMemory(mappedResource.pData, &g_wIndices[0], sizeof(WORD) * g_nIndexNum);
-                g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
-
-                g_pImmediateContext->PSSetShaderResources(0, 1, &g_pNowTexture);
-                g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
+    auto nNowTime = timeGetTime() / EXPLOSION_INTERVAL;
+    if (nNowTime != nLastTime) {
+        for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
+            if (!exExplode[i].bActive) {
+                exExplode[i].bActive = true;
+                exExplode[i].nTime = 0;
+                auto x = (rand() * EXPLOSION_AREA / RAND_MAX - EXPLOSION_AREA / 2.0f);
+                auto z = (rand() * EXPLOSION_AREA / RAND_MAX - EXPLOSION_AREA / 2.0f);
+                exExplode[i].v3CenterPos = XMFLOAT3(x, 0.0f, z);
+                exExplode[i].fAngle = 0.0f;
+                exExplode[i].fBright = 1.0f;
+                exExplode[i].fRadius = 0.1f;
+                exExplode[i].matMatrix = XMMatrixIdentity();
+                break;
             }
         }
     }
+    nLastTime = nNowTime;
 
-    g_nVertexNum = 0;
-    g_nIndexNum = 0;
+    for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
+        if (exExplode[i].bActive) {
+            exExplode[i].fRadius += EXPLOSION_SPEED;
+            if (exExplode[i].fRadius > EXPLOSION_R2) {
+                exExplode[i].bActive = false;
+            }
+            else {
+                if (exExplode[i].fRadius > EXPLOSION_R1) {
+                    exExplode[i].fBright =
+                        (EXPLOSION_R2 - exExplode[i].fRadius) / (EXPLOSION_R2 - EXPLOSION_R1);
+                }
+                exExplode[i].matMatrix._11 = exExplode[i].fRadius;
+                exExplode[i].matMatrix._22 = exExplode[i].fRadius;
+                exExplode[i].matMatrix._33 = exExplode[i].fRadius;
+                exExplode[i].matMatrix._41 = exExplode[i].v3CenterPos.x;
+                exExplode[i].matMatrix._42 = exExplode[i].v3CenterPos.y;
+                exExplode[i].matMatrix._43 = exExplode[i].v3CenterPos.z;
+            }
+        }
+    }
 }
 
 void Render(void) {
@@ -627,8 +648,6 @@ void Render(void) {
     g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
 
-    XMMATRIX matWorld = CreateWorldMatrix();
-
     XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
     XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -637,13 +656,22 @@ void Render(void) {
     XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 1000.0f);
 
     CBNeverChanges cbNeverChanges;
-    cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
-    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    float fFactor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
+        if (exExplode[i].bActive) {
+            auto mWorld = exExplode[i].matMatrix;
 
-    g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, NULL, 0xFFFFFFFF);
-    DrawChangingPictures();
+            cbNeverChanges.matView = XMMatrixTranspose(mWorld * matView * matProjection);
+            g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
 
-    FlushDrawingPictures();
+            for (auto j = 0; j < 3; ++j) {
+                fFactor[j] = exExplode[i].fBright;
+            }
+            g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, fFactor, 0xFFFFFFFF);
+            g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tTexture.pSRViewTexture));
+            g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
+        }
+    }
 }
 
 int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
@@ -682,6 +710,7 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
         MSG msg;
         ZeroMemory(&msg, sizeof(msg));
         while (msg.message != WM_QUIT) {
+            MoveExplorsion();
             Render();
             do {
                 if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
