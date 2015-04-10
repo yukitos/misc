@@ -6,57 +6,98 @@
 
 #define ROT_SPEED (XM_PI / 100.0f)
 #define CORNER_NUM 20
-#define R1 1.0f
-#define R2 0.5f
-#define SPHERE_SPEED 0.1f
+#define PLAYER_SPEED 0.08f
+
+#define SPHERE_R 0.1f
+#define CYLINDER_SP_R 0.5f
+#define CYLINDER_SP_LEN 2.0f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
     XMFLOAT2 v2UV;
 };
 
-struct Sphere {
+struct MY_PLAYER {
     XMFLOAT3 v3Pos;
     float r;
 };
 
-Sphere Sphere1, Sphere2;
+struct CYLINDER_SP {
+    XMFLOAT3 v3Pos;
+    XMFLOAT3 v3Vec;
+    float fLen, r, fRotZ, fRotY;
+    XMMATRIX matTransform;
+};
 
-bool CheckHit(Sphere *s1, Sphere *s2) {
-    auto dx = s1->v3Pos.x - s2->v3Pos.x;
-    auto dy = s1->v3Pos.y - s2->v3Pos.y;
-    auto dz = s1->v3Pos.z - s2->v3Pos.z;
-    auto fDistance = dx * dx + dy * dy + dz * dz;
+CYLINDER_SP HitArea;
+MY_PLAYER Player1;
 
-    return (fDistance < (s1->r + s2->r) * (s1->r + s2->r));
+XMFLOAT3 Subtract(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
+    return XMFLOAT3(pv3Vec1->x - pv3Vec2->x,
+        pv3Vec1->y - pv3Vec2->y,
+        pv3Vec1->z - pv3Vec2->z);
 }
 
-void InitSpheres(void) {
-    Sphere1.v3Pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
-    Sphere1.r = R1;
-
-    Sphere2.v3Pos = XMFLOAT3(2.0, 0.0f, 0.0f);
-    Sphere2.r = R2;
+bool CheckHit(XMFLOAT3 *pv3LineStart, XMFLOAT3 *pv3LineVec, float fLine_r,
+    XMFLOAT3 *pv3SphereCenter, float fSphere_r)
+{
+    auto dx = pv3SphereCenter->x - pv3LineStart->x;
+    auto dy = pv3SphereCenter->y - pv3LineStart->y;
+    auto dz = pv3SphereCenter->z - pv3LineStart->z;
+    auto t = (pv3LineVec->x * dx + pv3LineVec->y * dy + pv3LineVec->z * dz)
+        / (pv3LineVec->x * pv3LineVec->x + pv3LineVec->y * pv3LineVec->y + pv3LineVec->z * pv3LineVec->z);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    auto mx = pv3LineVec->x * t + pv3LineStart->x;
+    auto my = pv3LineVec->y * t + pv3LineStart->y;
+    auto mz = pv3LineVec->z * t + pv3LineStart->z;
+    auto fDistSqr =
+        (mx - pv3SphereCenter->x) * (mx - pv3SphereCenter->x) +
+        (my - pv3SphereCenter->y) * (my - pv3SphereCenter->y) +
+        (mz - pv3SphereCenter->z) * (mz - pv3SphereCenter->z);
+    auto ar = fLine_r + fSphere_r;
+    return (fDistSqr < ar * ar);
 }
 
-void MoveSpheres(void) {
-    if (GetAsyncKeyState(VK_SHIFT)) {
-        // Move Sphere1
-        if (GetAsyncKeyState(VK_LEFT)) { Sphere1.v3Pos.x -= SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_RIGHT)) { Sphere1.v3Pos.x += SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_UP)) { Sphere1.v3Pos.y -= SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_DOWN)) { Sphere1.v3Pos.y += SPHERE_SPEED; }
-        if (GetAsyncKeyState('Z')) { Sphere1.v3Pos.z += SPHERE_SPEED; }
-        if (GetAsyncKeyState('X')) { Sphere1.v3Pos.z -= SPHERE_SPEED; }
+void InitArea(void) {
+    HitArea.v3Pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    HitArea.v3Vec = XMFLOAT3(CYLINDER_SP_LEN, 0.0f, 0.0f);
+    HitArea.fLen = CYLINDER_SP_LEN;
+    HitArea.r = CYLINDER_SP_R;
+    HitArea.fRotZ = XM_PI / 6.0f;
+    HitArea.fRotY = XM_PIDIV4;
+    HitArea.matTransform = XMMatrixRotationZ(HitArea.fRotZ) * XMMatrixRotationY(HitArea.fRotY);
+    auto vTrans = XMLoadFloat3(&(HitArea.v3Vec));
+    vTrans = XMVector3Transform(vTrans, HitArea.matTransform);
+    XMStoreFloat3(&(HitArea.v3Vec), vTrans);
+}
+
+void MoveArea(void) {
+}
+
+void InitPlayer(void) {
+    Player1.v3Pos = XMFLOAT3(0.0f, 0.0f, -4.0f);
+    Player1.r = SPHERE_R;
+}
+
+void MovePlayer(void) {
+    if (GetAsyncKeyState(VK_LEFT)) {
+        Player1.v3Pos.x -= PLAYER_SPEED;
     }
-    else {
-        // Move Sphere2
-        if (GetAsyncKeyState(VK_LEFT)) { Sphere2.v3Pos.x -= SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_RIGHT)) { Sphere2.v3Pos.x += SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_UP)) { Sphere2.v3Pos.y -= SPHERE_SPEED; }
-        if (GetAsyncKeyState(VK_DOWN)) { Sphere2.v3Pos.y += SPHERE_SPEED; }
-        if (GetAsyncKeyState('Z')) { Sphere2.v3Pos.z += SPHERE_SPEED; }
-        if (GetAsyncKeyState('X')) { Sphere2.v3Pos.z -= SPHERE_SPEED; }
+    if (GetAsyncKeyState(VK_RIGHT)) {
+        Player1.v3Pos.x += PLAYER_SPEED;
+    }
+    if (GetAsyncKeyState(VK_UP)) {
+        Player1.v3Pos.z += PLAYER_SPEED;
+    }
+    if (GetAsyncKeyState(VK_DOWN)) {
+        Player1.v3Pos.z -= PLAYER_SPEED;
+    }
+    if (GetAsyncKeyState('Z')) {
+        Player1.v3Pos.y += PLAYER_SPEED;
+    }
+    if (GetAsyncKeyState('X')) {
+        Player1.v3Pos.y -= PLAYER_SPEED;
     }
 }
 
@@ -90,6 +131,16 @@ struct TEX_PICTURE
     ID3D11ShaderResourceView *pSRViewTexture;
     D3D11_TEXTURE2D_DESC tdDesc;
     int nWidth, nHeight;
+};
+
+struct MY_MODEL {
+    int nVertexPos;
+    int nVertexNum;
+    int nIndexPos;
+    int nIndexNum;
+    TEX_PICTURE *ptpTexture;
+    XMMATRIX matMatrix;
+    XMFLOAT4 v4AddColor;
 };
 
 UINT g_nClientWidth;
@@ -127,6 +178,7 @@ WORD g_wIndices[MAX_BUFFER_INDEX];
 int g_nIndexNum = 0;
 
 TEX_PICTURE g_tSphere1Texture, g_tSphere2Texture;
+MY_MODEL g_mmPlayer, g_mmHit;
 
 void ShowError(LPTSTR msg, LPTSTR title = _T("ERROR"), HWND hWnd = nullptr) {
     MessageBox(hWnd, msg, title, MB_ICONERROR | MB_OK);
@@ -504,8 +556,11 @@ int InitDrawModes(void)
     return S_OK;
 }
 
-void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
-    WORD *pIndices, int *pIndexNum)
+void MakeSphereIndexed(
+    float x, float y, float z, float r,
+    CUSTOMVERTEX *pVertices, int *pVertexNum,
+    WORD *pIndices, int *pIndexNum,
+    int nIndexOffset)
 {
     auto fAngleDelta = XM_2PI / CORNER_NUM;
     auto nIndex = 0;
@@ -515,9 +570,9 @@ void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
         auto fPhi = 0.0f;
         for (auto j = 0; j < CORNER_NUM + 1; ++j) {
             pVertices[nIndex].v4Pos = XMFLOAT4(
-                sinf(fTheta) * cosf(fPhi),
-                cosf(fTheta),
-                sinf(fTheta) * sinf(fPhi), 1.0f);
+                x + r * sinf(fTheta) * cosf(fPhi),
+                y + r * cosf(fTheta),
+                z + r * sinf(fTheta) * sinf(fPhi), 1.0f);
             pVertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
             nIndex++;
             fPhi += fAngleDelta;
@@ -530,16 +585,144 @@ void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
     for (auto i = 0; i < CORNER_NUM; ++i) {
         for (auto j = 0; j < CORNER_NUM / 2; ++j) {
             auto nIndexY = j * (CORNER_NUM + 1);
-            pIndices[nIndex + 0] = nIndexY + i;
-            pIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + i;
-            pIndices[nIndex + 2] = nIndexY + i + 1;
+            pIndices[nIndex + 0] = nIndexOffset + nIndexY + i;
+            pIndices[nIndex + 1] = nIndexOffset + nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 2] = nIndexOffset + nIndexY + i + 1;
 
-            pIndices[nIndex + 3] = nIndexY + i + 1;
-            pIndices[nIndex + 4] = nIndexY + (CORNER_NUM + 1) + i;
-            pIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + i + 1;
+            pIndices[nIndex + 3] = nIndexOffset + nIndexY + i + 1;
+            pIndices[nIndex + 4] = nIndexOffset + nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 5] = nIndexOffset + nIndexY + (CORNER_NUM + 1) + i + 1;
             nIndex += 6;
 
         }
+    }
+    *pIndexNum = nIndex;
+}
+
+void MakeConeIndexed(
+    float fHeight, float r,
+    CUSTOMVERTEX *pVertices, int *pVertexNum,
+    WORD *pIndices, int *pIndexNum,
+    int nIndexOffset)
+{
+    auto fAngleDelta = XM_2PI / CORNER_NUM;
+    auto nIndex = 0;
+    pVertices[nIndex].v4Pos = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
+    pVertices[nIndex].v2UV = XMFLOAT2(0.5f, 1.0f);
+    ++nIndex;
+    auto fTheta = 0.0f;
+    for (auto j = 0; j < CORNER_NUM + 1; ++j) {
+        pVertices[nIndex].v4Pos = XMFLOAT4(
+            r * cosf(fTheta),
+            fHeight,
+            r * sinf(fTheta), 1.0f);
+        pVertices[nIndex].v2UV = XMFLOAT2(fTheta / XM_2PI, 0.5f);
+        ++nIndex;
+        fTheta += fAngleDelta;
+    }
+    pVertices[nIndex].v4Pos = XMFLOAT4(0.0f, fHeight, 0.0f, 1.0f);
+    pVertices[nIndex].v2UV = XMFLOAT2(0.5f, 0.0f);
+    ++nIndex;
+    *pVertexNum = nIndex;
+
+    nIndex = 0;
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        pIndices[nIndex + 0] = nIndexOffset + 0;
+        pIndices[nIndex + 1] = nIndexOffset + i + 1 + 1;
+        pIndices[nIndex + 2] = nIndexOffset + i + 1;
+        pIndices[nIndex + 3] = nIndexOffset + CORNER_NUM + 2;
+        pIndices[nIndex + 4] = nIndexOffset + i + 1;
+        pIndices[nIndex + 5] = nIndexOffset + i + 1 + 1;
+        nIndex += 6;
+    }
+    *pIndexNum = nIndex;
+}
+
+void MakeCylinderSpIndexed(
+    float x, float y, float z, float fLen, float r,
+    CUSTOMVERTEX *pVertices, int *pVertexNum,
+    WORD *pIndices, int *pIndexNum)
+{
+    // Half globe part
+
+    auto fAngleDelta = XM_2PI / CORNER_NUM;
+    auto nIndex = 0;
+    auto nIndex2Base = (CORNER_NUM + 1) * (CORNER_NUM / 4 + 1);
+    auto fTheta = 0.0f;
+    for (auto i = 0; i < CORNER_NUM / 4 + 1; ++i) {
+        auto fPhi = 0.0f;
+        for (auto j = 0; j < CORNER_NUM + 1; ++j) {
+            pVertices[nIndex].v4Pos = XMFLOAT4(
+                x + fLen + r * cosf(fTheta),
+                y + r * sinf(fTheta) * cosf(fPhi),
+                z + r * sinf(fTheta) * sinf(fPhi), 1.0f);
+            pVertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
+            pVertices[nIndex + nIndex2Base].v4Pos = XMFLOAT4(
+                x - r * cosf(fTheta),
+                y + r * sinf(fTheta) * cosf(fPhi),
+                z + r * sinf(fTheta) * sinf(fPhi), 1.0f);
+            pVertices[nIndex + nIndex2Base].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
+            ++nIndex;
+            fPhi += fAngleDelta;
+        }
+        fTheta += fAngleDelta;
+    }
+    auto nIndex3Base = nIndex * 2;
+
+    // Cylinder part
+    nIndex = nIndex3Base;
+    fAngleDelta = XM_2PI / CORNER_NUM;
+    fTheta = 0.0f;
+    for (auto i = 0; i < CORNER_NUM + 1; ++i) {
+        pVertices[nIndex + 0].v4Pos = XMFLOAT4(
+            x,
+            y + r * cosf(fTheta),
+            z + r * sinf(fTheta), 1.0f);
+        pVertices[nIndex + 0].v2UV = XMFLOAT2(0.0f, fTheta / XM_2PI);
+        pVertices[nIndex + 1].v4Pos = XMFLOAT4(
+            x + fLen,
+            y + r * cosf(fTheta),
+            z + r * sinf(fTheta), 1.0f);
+        pVertices[nIndex + 1].v2UV = XMFLOAT2(0.0f, fTheta / XM_2PI);
+        nIndex += 2;
+        fTheta += fAngleDelta;
+    }
+    *pVertexNum = nIndex;
+
+    nIndex = 0;
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
+            auto nIndexY = j * (CORNER_NUM + 1);
+            pIndices[nIndex + 0] = nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 1] = nIndexY + i;
+            pIndices[nIndex + 2] = nIndexY + i + 1;
+            pIndices[nIndex + 3] = nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 4] = nIndexY + i + 1;
+            pIndices[nIndex + 5] = nIndexY + (CORNER_NUM + 1) + i + 1;
+            nIndex += 6;
+        }
+    }
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
+            auto nIndexY = j * (CORNER_NUM + 1);
+            pIndices[nIndex + 0] = nIndex2Base + nIndexY + i;
+            pIndices[nIndex + 1] = nIndex2Base + nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 2] = nIndex2Base + nIndexY + i + 1;
+            pIndices[nIndex + 3] = nIndex2Base + nIndexY + i + 1;
+            pIndices[nIndex + 4] = nIndex2Base + nIndexY + (CORNER_NUM + 1) + i;
+            pIndices[nIndex + 5] = nIndex2Base + nIndexY + (CORNER_NUM + 1) + i + 1;
+            nIndex += 6;
+
+        }
+    }
+    for (auto i = 0; i < CORNER_NUM; ++i) {
+        pIndices[nIndex + 0] = nIndex3Base + (i * 2);
+        pIndices[nIndex + 1] = nIndex3Base + ((i + 1) * 2) + 1;
+        pIndices[nIndex + 2] = nIndex3Base + ((i + 1) * 2);
+        pIndices[nIndex + 3] = nIndex3Base + ((i + 1) * 2) + 1;
+        pIndices[nIndex + 4] = nIndex3Base + (i * 2);
+        pIndices[nIndex + 5] = nIndex3Base + ((i * 2) + 1);
+        nIndex += 6;
     }
     *pIndexNum = nIndex;
 }
@@ -579,25 +762,6 @@ HRESULT InitGeometry(void)
         return hr;
     }
 
-    {
-        D3D11_MAPPED_SUBRESOURCE mappedVertices, mappedIndices;
-        hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVertices);
-        if (FAILED(hr)) {
-            ShowError(_T("Failed to map vertices."));
-            return hr;
-        }
-        hr = g_pImmediateContext->Map(g_pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedIndices);
-        if (FAILED(hr)) {
-            g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
-            ShowError(_T("Failed to map indices."));
-            return hr;
-        }
-        MakeSphereIndexed((CUSTOMVERTEX*)mappedVertices.pData, &g_nVertexNum,
-            (WORD*)mappedIndices.pData, &g_nIndexNum);
-        g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
-        g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
-    }
-
     g_tSphere1Texture.pSRViewTexture = nullptr;
     hr = LoadTexture(_T("4.bmp"), &g_tSphere1Texture, 1152, 576, 1024, 512);
     if (FAILED(hr)) {
@@ -609,6 +773,52 @@ HRESULT InitGeometry(void)
     if (FAILED(hr)) {
         ShowError(_T("Failed to load texture 7.bmp"));
         return hr;
+    }
+
+    int nVertexNum1, nIndexNum1;
+    MakeSphereIndexed(0.0f, 0.0f, 0.0f, SPHERE_R,
+        &(g_cvVertices[g_nVertexNum]), &nVertexNum1,
+        &(g_wIndices[g_nIndexNum]), &nIndexNum1, 0);
+    g_mmPlayer.nVertexPos = g_nVertexNum;
+    g_mmPlayer.nVertexNum = nVertexNum1;
+    g_mmPlayer.nIndexPos = g_nIndexNum;
+    g_mmPlayer.nIndexNum = nIndexNum1;
+    g_nVertexNum += nVertexNum1;
+    g_nIndexNum += nIndexNum1;
+    g_mmPlayer.ptpTexture = &g_tSphere2Texture;
+    g_mmPlayer.matMatrix = XMMatrixIdentity();
+    g_mmPlayer.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    MakeCylinderSpIndexed(0.0f, 0.0f, 0.0f, CYLINDER_SP_LEN, CYLINDER_SP_R,
+        &(g_cvVertices[g_nVertexNum]), &nVertexNum1,
+        &(g_wIndices[g_nIndexNum]), &nIndexNum1);
+    g_mmHit.nVertexPos = g_nVertexNum;
+    g_mmHit.nVertexNum = nVertexNum1;
+    g_mmHit.nIndexPos = g_nIndexNum;
+    g_mmHit.nIndexNum = nIndexNum1;
+    g_nVertexNum += nVertexNum1;
+    g_nIndexNum += nIndexNum1;
+    g_mmHit.ptpTexture = &g_tSphere2Texture;
+    g_mmHit.matMatrix = XMMatrixIdentity();
+    g_mmHit.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+
+    {
+        D3D11_MAPPED_SUBRESOURCE mappedVertices, mappedIndices;
+        hr = g_pImmediateContext->Map(g_pVertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVertices);
+        if (FAILED(hr)){
+            ShowError(_T("Failed to map vertex buffer."));
+            return hr;
+        }
+        hr = g_pImmediateContext->Map(g_pIndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedIndices);
+        if (FAILED(hr)) {
+            g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
+            ShowError(_T("Failed to map index buffer."));
+            return hr;
+        }
+        CopyMemory(mappedVertices.pData, g_cvVertices, sizeof(CUSTOMVERTEX) * g_nVertexNum);
+        CopyMemory(mappedIndices.pData, g_wIndices, sizeof(WORD) * g_nIndexNum);
+        g_pImmediateContext->Unmap(g_pVertexBuffer, 0);
+        g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
     }
 
     return S_OK;
@@ -652,6 +862,14 @@ void Cleanup(void)
     SAFE_RELEASE(g_pd3dDevice);
 }
 
+void DrawMyModel(MY_MODEL *pmmDrawModel, XMMATRIX *pmViewProjection) {
+    CBNeverChanges cbNeverChanges;
+    cbNeverChanges.matView = XMMatrixTranspose(pmmDrawModel->matMatrix * *pmViewProjection);
+    cbNeverChanges.v4AddColor = pmmDrawModel->v4AddColor;
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    g_pImmediateContext->PSSetShaderResources(0, 1, &(pmmDrawModel->ptpTexture->pSRViewTexture));
+    g_pImmediateContext->DrawIndexed(pmmDrawModel->nIndexNum, pmmDrawModel->nIndexPos, pmmDrawModel->nVertexPos);
+}
 
 LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -684,37 +902,30 @@ void Render(void) {
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
     g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
 
-    XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
-    XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z - 5.0f, 0.0f);
+    XMVECTOR At = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 0.0);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
 
     XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 100.0f);
+    XMMATRIX matViewProjection = matView * matProjection;
 
-    CBNeverChanges cbNeverChanges;
-
-    g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFF);
     g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
-    XMMATRIX matWorld = CreateWorldMatrix(Sphere1.v3Pos.x, Sphere1.v3Pos.y, Sphere1.v3Pos.z, Sphere1.r);
-    cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
-    cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
-    g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tSphere1Texture.pSRViewTexture));
-    g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
+    g_pImmediateContext->RSSetState(g_pRS_Cull_CW);
 
-    g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, NULL, 0xFFFFFFFF);
-    g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState_NoWrite, 1);
-    matWorld = CreateWorldMatrix(Sphere2.v3Pos.x, Sphere2.v3Pos.y, Sphere2.v3Pos.z, Sphere2.r);
-    cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
-    if (CheckHit(&Sphere1, &Sphere2)) {
-        cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f);
+    g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+    g_mmHit.matMatrix = HitArea.matTransform;
+    DrawMyModel(&g_mmHit, &matViewProjection);
+
+    g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+    if (CheckHit(&(HitArea.v3Pos), &(HitArea.v3Vec), HitArea.r, &(Player1.v3Pos), Player1.r)) {
+        g_mmPlayer.v4AddColor = XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f);
     }
     else {
-        cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+        g_mmPlayer.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
     }
-    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
-    g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tSphere2Texture.pSRViewTexture));
-    g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
+    g_mmPlayer.matMatrix = CreateWorldMatrix(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 1.0f);
+    DrawMyModel(&g_mmPlayer, &matViewProjection);
 }
 
 int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
@@ -744,7 +955,8 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
         && SUCCEEDED(InitDrawModes())
         && SUCCEEDED(InitGeometry()))
     {
-        InitSpheres();
+        InitArea();
+        InitPlayer();
 
         ShowWindow(g_hWnd, SW_SHOWDEFAULT);
         UpdateWindow(g_hWnd);
@@ -755,7 +967,8 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
         MSG msg;
         ZeroMemory(&msg, sizeof(msg));
         while (msg.message != WM_QUIT) {
-            MoveSpheres();
+            MoveArea();
+            MovePlayer();
             Render();
             do {
                 if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
