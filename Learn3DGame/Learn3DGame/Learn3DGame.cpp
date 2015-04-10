@@ -5,37 +5,85 @@
 #include "Learn3DGame.h"
 
 #define ROT_SPEED (XM_PI / 100.0f)
-#define CORNER_NUM 50
-#define R 1.0f
-#define TRANS_SPEED 0.3f
-#define CYLINDER_LENGTH 20.0f
-#define MAX_EXPLOSION_NUM 10
-#define EXPLOSION_INTERVAL 200
-#define EXPLOSION_AREA 4.0f
-#define EXPLOSION_SPEED 0.05f
-#define EXPLOSION_R1 1.0f
-#define EXPLOSION_R2 2.0f
+#define CORNER_NUM 20
+#define R1 1.0f
+#define R2 0.5f
+#define SPHERE_SPEED 0.1f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
     XMFLOAT2 v2UV;
 };
 
+struct Sphere {
+    XMFLOAT3 v3Pos;
+    float r;
+};
+
+Sphere Sphere1, Sphere2;
+
+bool CheckHit(Sphere *s1, Sphere *s2) {
+    auto dx = s1->v3Pos.x - s2->v3Pos.x;
+    auto dy = s1->v3Pos.y - s2->v3Pos.y;
+    auto dz = s1->v3Pos.z - s2->v3Pos.z;
+    auto fDistance = dx * dx + dy * dy + dz * dz;
+
+    return (fDistance < (s1->r + s2->r) * (s1->r + s2->r));
+}
+
+void InitSpheres(void) {
+    Sphere1.v3Pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
+    Sphere1.r = R1;
+
+    Sphere2.v3Pos = XMFLOAT3(2.0, 0.0f, 0.0f);
+    Sphere2.r = R2;
+}
+
+void MoveSpheres(void) {
+    if (GetAsyncKeyState(VK_SHIFT)) {
+        // Move Sphere1
+        if (GetAsyncKeyState(VK_LEFT)) { Sphere1.v3Pos.x -= SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_RIGHT)) { Sphere1.v3Pos.x += SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_UP)) { Sphere1.v3Pos.y -= SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_DOWN)) { Sphere1.v3Pos.y += SPHERE_SPEED; }
+        if (GetAsyncKeyState('Z')) { Sphere1.v3Pos.z += SPHERE_SPEED; }
+        if (GetAsyncKeyState('X')) { Sphere1.v3Pos.z -= SPHERE_SPEED; }
+    }
+    else {
+        // Move Sphere2
+        if (GetAsyncKeyState(VK_LEFT)) { Sphere2.v3Pos.x -= SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_RIGHT)) { Sphere2.v3Pos.x += SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_UP)) { Sphere2.v3Pos.y -= SPHERE_SPEED; }
+        if (GetAsyncKeyState(VK_DOWN)) { Sphere2.v3Pos.y += SPHERE_SPEED; }
+        if (GetAsyncKeyState('Z')) { Sphere2.v3Pos.z += SPHERE_SPEED; }
+        if (GetAsyncKeyState('X')) { Sphere2.v3Pos.z -= SPHERE_SPEED; }
+    }
+}
+
+XMMATRIX CreateWorldMatrix(float x, float y, float z, float fSize){
+    static float fAngleX = 0.0f;
+
+    auto fAngleY = XM_2PI * (float)(timeGetTime() % 3000) / 3000.0f;
+
+    auto matRotY = XMMatrixRotationY(fAngleY);
+    auto matRotX = XMMatrixRotationX(fAngleX);
+
+    auto matScaleTrans = XMMatrixIdentity();
+    matScaleTrans._11 = fSize;
+    matScaleTrans._22 = fSize;
+    matScaleTrans._33 = fSize;
+    matScaleTrans._41 = x;
+    matScaleTrans._42 = y;
+    matScaleTrans._43 = z;
+
+    return matRotY * matRotX * matScaleTrans;
+}
+
 struct CBNeverChanges
 {
     XMMATRIX matView;
+    XMFLOAT4 v4AddColor;
 };
-
-struct Explosion {
-    int bActive;
-    int nTime;
-    XMFLOAT3 v3CenterPos;
-    float fRadius;
-    float fAngle;
-    XMMATRIX matMatrix;
-    float fBright;
-};
-Explosion exExplode[MAX_EXPLOSION_NUM];
 
 struct TEX_PICTURE
 {
@@ -53,10 +101,13 @@ ID3D11Device *g_pd3dDevice;
 IDXGISwapChain *g_pSwapChain;
 ID3D11DeviceContext *g_pImmediateContext;
 ID3D11RasterizerState *g_pRS;
+ID3D11RasterizerState *g_pRS_Cull_CW;
+ID3D11RasterizerState *g_pRS_Cull_CCW;
 ID3D11RenderTargetView *g_pRTV;
 ID3D11Texture2D *g_pDepthStencil;
 ID3D11DepthStencilView *g_pDepthStencilView;
 ID3D11DepthStencilState *g_pDepthStencilState;
+ID3D11DepthStencilState *g_pDepthStencilState_NoWrite;
 D3D_FEATURE_LEVEL g_FeatureLevel;
 
 ID3D11Buffer *g_pVertexBuffer;
@@ -75,9 +126,7 @@ int g_nVertexNum = 0;
 WORD g_wIndices[MAX_BUFFER_INDEX];
 int g_nIndexNum = 0;
 
-TEX_PICTURE g_tTexture;
-
-ID3D11ShaderResourceView *g_pNowTexture;
+TEX_PICTURE g_tSphere1Texture, g_tSphere2Texture;
 
 void ShowError(LPTSTR msg, LPTSTR title = _T("ERROR"), HWND hWnd = nullptr) {
     MessageBox(hWnd, msg, title, MB_ICONERROR | MB_OK);
@@ -216,7 +265,7 @@ HRESULT InitD3D(void) {
         D3D11_DEPTH_STENCIL_DESC desc;
         ZeroMemory(&desc, sizeof(desc));
         desc.DepthEnable = true;
-        desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+        desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
         desc.DepthFunc = D3D11_COMPARISON_LESS;
 
         desc.StencilEnable = true;
@@ -238,7 +287,15 @@ HRESULT InitD3D(void) {
             ShowError(_T("Failed to create depth stencil state."));
             return hr;
         }
-        g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
+        
+        desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+        hr = g_pd3dDevice->CreateDepthStencilState(&desc, &g_pDepthStencilState_NoWrite);
+        if (FAILED(hr)) {
+            ShowError(_T("Failed to create no-write depth stencil state."));
+            return hr;
+        }
+
+        //g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
     }
 
     {
@@ -253,9 +310,30 @@ HRESULT InitD3D(void) {
             ShowError(_T("Failed to create rasterizer state."));
             return hr;
         }
-    }
+        g_pImmediateContext->RSSetState(g_pRS);
 
-    g_pImmediateContext->RSSetState(g_pRS);
+        ZeroMemory(&desc, sizeof(desc));
+        desc.FillMode = D3D11_FILL_SOLID;
+        desc.CullMode = D3D11_CULL_BACK;
+        desc.FrontCounterClockwise = TRUE;
+        desc.DepthClipEnable = TRUE;
+        hr = g_pd3dDevice->CreateRasterizerState(&desc, &g_pRS_Cull_CW);
+        if (FAILED(hr)) {
+            ShowError(_T("Failed to create clockwise rasterizer state"));
+            return hr;
+        }
+
+        ZeroMemory(&desc, sizeof(desc));
+        desc.FillMode = D3D11_FILL_SOLID;
+        desc.CullMode = D3D11_CULL_BACK;
+        desc.FrontCounterClockwise = FALSE;
+        desc.DepthClipEnable = TRUE;
+        hr = g_pd3dDevice->CreateRasterizerState(&desc, &g_pRS_Cull_CCW);
+        if (FAILED(hr)){
+            ShowError(_T("Failed to create counter clockwise rasterizer state"));
+            return hr;
+        }
+    }
 
     D3D11_VIEWPORT vp;
     vp.Width = (FLOAT)g_nClientWidth;
@@ -275,7 +353,7 @@ HRESULT MakeShaders(void) {
     ID3DBlob *pPixelShaderBuffer = nullptr;
     ID3DBlob *pError = nullptr;
 
-    LPTSTR fileName = _T("Basic_3D_Tex.fx");
+    LPTSTR fileName = _T("Basic_3D_TexMark.fx");
 
     DWORD dwShaderFlags = 0;
 #ifdef DEBUG
@@ -351,15 +429,6 @@ HRESULT MakeShaders(void) {
         }
     }
 
-    CBNeverChanges cbNeverChanges;
-    XMMATRIX mScreen = XMMatrixIdentity();
-    mScreen._11 = 2.0f / g_nClientWidth;
-    mScreen._22 = -2.0f / g_nClienthHeight;
-    mScreen._41 = -1.0f;
-    mScreen._42 = 1.0f;
-    cbNeverChanges.matView = XMMatrixTranspose(mScreen);
-    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
-
     return S_OK;
 }
 
@@ -402,7 +471,7 @@ int InitDrawModes(void)
         desc.AlphaToCoverageEnable = FALSE;
         desc.IndependentBlendEnable = FALSE;
         desc.RenderTarget[0].BlendEnable = TRUE;
-        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_BLEND_FACTOR;
+        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
         desc.RenderTarget[0].DestBlend = D3D11_BLEND_ONE;
         desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
         desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
@@ -442,13 +511,13 @@ void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
     auto nIndex = 0;
     auto fTheta = 0.0f;
 
-    for (auto i = 0; i < CORNER_NUM / 4; ++i) {
+    for (auto i = 0; i < CORNER_NUM / 2 + 1; ++i) {
         auto fPhi = 0.0f;
         for (auto j = 0; j < CORNER_NUM + 1; ++j) {
             pVertices[nIndex].v4Pos = XMFLOAT4(
-                R * sinf(fTheta) * cosf(fPhi),
-                R * cosf(fTheta),
-                R * sinf(fTheta) * sinf(fPhi), 1.0f);
+                sinf(fTheta) * cosf(fPhi),
+                cosf(fTheta),
+                sinf(fTheta) * sinf(fPhi), 1.0f);
             pVertices[nIndex].v2UV = XMFLOAT2(fPhi / XM_2PI, fTheta / XM_PI);
             nIndex++;
             fPhi += fAngleDelta;
@@ -459,7 +528,7 @@ void MakeSphereIndexed(CUSTOMVERTEX *pVertices, int *pVertexNum,
 
     nIndex = 0;
     for (auto i = 0; i < CORNER_NUM; ++i) {
-        for (auto j = 0; j < CORNER_NUM / 4; ++j) {
+        for (auto j = 0; j < CORNER_NUM / 2; ++j) {
             auto nIndexY = j * (CORNER_NUM + 1);
             pIndices[nIndex + 0] = nIndexY + i;
             pIndices[nIndex + 1] = nIndexY + (CORNER_NUM + 1) + i;
@@ -529,10 +598,16 @@ HRESULT InitGeometry(void)
         g_pImmediateContext->Unmap(g_pIndexBuffer, 0);
     }
 
-    g_tTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("6.bmp"), &g_tTexture, 512, 512, 512, 512);
+    g_tSphere1Texture.pSRViewTexture = nullptr;
+    hr = LoadTexture(_T("4.bmp"), &g_tSphere1Texture, 1152, 576, 1024, 512);
     if (FAILED(hr)) {
-        ShowError(_T("Failed to load texture"));
+        ShowError(_T("Failed to load texture 4.bmp"));
+        return hr;
+    }
+    g_tSphere2Texture.pSRViewTexture = nullptr;
+    hr = LoadTexture(_T("7.bmp"), &g_tSphere2Texture, 691, 691, 1024, 1024);
+    if (FAILED(hr)) {
+        ShowError(_T("Failed to load texture 7.bmp"));
         return hr;
     }
 
@@ -541,7 +616,8 @@ HRESULT InitGeometry(void)
 
 void Cleanup(void)
 {
-    SAFE_RELEASE(g_tTexture.pSRViewTexture);
+    SAFE_RELEASE(g_tSphere1Texture.pSRViewTexture);
+    SAFE_RELEASE(g_tSphere2Texture.pSRViewTexture);
     SAFE_RELEASE(g_pVertexBuffer);
     SAFE_RELEASE(g_pIndexBuffer);
 
@@ -551,7 +627,10 @@ void Cleanup(void)
     SAFE_RELEASE(g_pPixelShader);
     SAFE_RELEASE(g_pVertexShader);
     SAFE_RELEASE(g_pCBNeverChanges);
+    
     SAFE_RELEASE(g_pRS);
+    SAFE_RELEASE(g_pRS_Cull_CW);
+    SAFE_RELEASE(g_pRS_Cull_CCW);
 
     if (g_pImmediateContext) {
         g_pImmediateContext->ClearState();
@@ -562,6 +641,7 @@ void Cleanup(void)
     SAFE_RELEASE(g_pDepthStencil);
     SAFE_RELEASE(g_pDepthStencilView);
     SAFE_RELEASE(g_pDepthStencilState);
+    SAFE_RELEASE(g_pDepthStencilState_NoWrite);
 
     if (g_pSwapChain) {
         g_pSwapChain->SetFullscreenState(FALSE, 0);
@@ -584,58 +664,13 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-void MoveExplorsion(void) {
-    static int nLastTime = 0;
-
-    auto nNowTime = timeGetTime() / EXPLOSION_INTERVAL;
-    if (nNowTime != nLastTime) {
-        for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
-            if (!exExplode[i].bActive) {
-                exExplode[i].bActive = true;
-                exExplode[i].nTime = 0;
-                auto x = (rand() * EXPLOSION_AREA / RAND_MAX - EXPLOSION_AREA / 2.0f);
-                auto z = (rand() * EXPLOSION_AREA / RAND_MAX - EXPLOSION_AREA / 2.0f);
-                exExplode[i].v3CenterPos = XMFLOAT3(x, 0.0f, z);
-                exExplode[i].fAngle = 0.0f;
-                exExplode[i].fBright = 1.0f;
-                exExplode[i].fRadius = 0.1f;
-                exExplode[i].matMatrix = XMMatrixIdentity();
-                break;
-            }
-        }
-    }
-    nLastTime = nNowTime;
-
-    for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
-        if (exExplode[i].bActive) {
-            exExplode[i].fRadius += EXPLOSION_SPEED;
-            if (exExplode[i].fRadius > EXPLOSION_R2) {
-                exExplode[i].bActive = false;
-            }
-            else {
-                if (exExplode[i].fRadius > EXPLOSION_R1) {
-                    exExplode[i].fBright =
-                        (EXPLOSION_R2 - exExplode[i].fRadius) / (EXPLOSION_R2 - EXPLOSION_R1);
-                }
-                exExplode[i].matMatrix._11 = exExplode[i].fRadius;
-                exExplode[i].matMatrix._22 = exExplode[i].fRadius;
-                exExplode[i].matMatrix._33 = exExplode[i].fRadius;
-                exExplode[i].matMatrix._41 = exExplode[i].v3CenterPos.x;
-                exExplode[i].matMatrix._42 = exExplode[i].v3CenterPos.y;
-                exExplode[i].matMatrix._43 = exExplode[i].v3CenterPos.z;
-            }
-        }
-    }
-}
-
 void Render(void) {
     XMFLOAT4 v4Color = XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f);
     g_pImmediateContext->ClearRenderTargetView(g_pRTV, (float*)&v4Color);
-    
     g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     g_pImmediateContext->PSSetSamplers(0, 1, &g_pSamplerState);
-    g_pImmediateContext->RSSetState(g_pRS);
+    g_pImmediateContext->RSSetState(g_pRS_Cull_CW);
 
     UINT nStrides = sizeof(CUSTOMVERTEX);
     UINT nOffsets = 0;
@@ -647,31 +682,39 @@ void Render(void) {
     g_pImmediateContext->VSSetShader(g_pVertexShader, NULL, 0);
     g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
+    g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
 
     XMVECTOR Eye = XMVectorSet(0.0f, 3.0f, -5.0f, 0.0f);
     XMVECTOR At = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
 
-    XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 1000.0f);
+    XMMATRIX matProjection = XMMatrixPerspectiveFovLH(XM_PIDIV4, VIEW_WIDTH / (FLOAT)VIEW_HEIGHT, 0.01f, 100.0f);
 
     CBNeverChanges cbNeverChanges;
-    float fFactor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    for (auto i = 0; i < MAX_EXPLOSION_NUM; ++i) {
-        if (exExplode[i].bActive) {
-            auto mWorld = exExplode[i].matMatrix;
 
-            cbNeverChanges.matView = XMMatrixTranspose(mWorld * matView * matProjection);
-            g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFF);
+    g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
+    XMMATRIX matWorld = CreateWorldMatrix(Sphere1.v3Pos.x, Sphere1.v3Pos.y, Sphere1.v3Pos.z, Sphere1.r);
+    cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
+    cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tSphere1Texture.pSRViewTexture));
+    g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
 
-            for (auto j = 0; j < 3; ++j) {
-                fFactor[j] = exExplode[i].fBright;
-            }
-            g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, fFactor, 0xFFFFFFFF);
-            g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tTexture.pSRViewTexture));
-            g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
-        }
+    g_pImmediateContext->OMSetBlendState(g_pbsAddBlend, NULL, 0xFFFFFFFF);
+    g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState_NoWrite, 1);
+    matWorld = CreateWorldMatrix(Sphere2.v3Pos.x, Sphere2.v3Pos.y, Sphere2.v3Pos.z, Sphere2.r);
+    cbNeverChanges.matView = XMMatrixTranspose(matWorld * matView * matProjection);
+    if (CheckHit(&Sphere1, &Sphere2)) {
+        cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f);
     }
+    else {
+        cbNeverChanges.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    g_pImmediateContext->PSSetShaderResources(0, 1, &(g_tSphere2Texture.pSRViewTexture));
+    g_pImmediateContext->DrawIndexed(g_nIndexNum, 0, 0);
 }
 
 int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
@@ -701,6 +744,8 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
         && SUCCEEDED(InitDrawModes())
         && SUCCEEDED(InitGeometry()))
     {
+        InitSpheres();
+
         ShowWindow(g_hWnd, SW_SHOWDEFAULT);
         UpdateWindow(g_hWnd);
 
@@ -710,7 +755,7 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
         MSG msg;
         ZeroMemory(&msg, sizeof(msg));
         while (msg.message != WM_QUIT) {
-            MoveExplorsion();
+            MoveSpheres();
             Render();
             do {
                 if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
