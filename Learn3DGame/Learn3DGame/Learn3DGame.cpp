@@ -12,7 +12,7 @@
 #define CYLINDER_SP_R 0.5f
 #define CYLINDER_SP_LEN 2.0f
 
-#define CHECK_TRIANGLE_NUM 3
+#define CHECK_POLYGON_ANGLES 30
 #define GROUND_SIZE 20.0f
 
 struct CUSTOMVERTEX {
@@ -25,17 +25,8 @@ struct MY_PLAYER {
 };
 MY_PLAYER Player1;
 
-XMFLOAT3 g_TriangleVertices[CHECK_TRIANGLE_NUM * 3] = {
-    XMFLOAT3(2.0f, 0.01f, -2.0f),
-    XMFLOAT3(-2.0f, 0.01f, -2.0f),
-    XMFLOAT3(0.0f, 0.01f, 1.5f),
-    XMFLOAT3(6.0f, 0.01f, -2.5f),
-    XMFLOAT3(2.5f, 0.01f, -1.0f),
-    XMFLOAT3(4.0f, 0.01f, 4.5f),
-    XMFLOAT3(-1.0f, 0.01f, 5.0f),
-    XMFLOAT3(-5.0f, 0.01f, -0.5f),
-    XMFLOAT3(-1.0f, 0.01f, 1.0f)
-};
+XMFLOAT3 g_HitPolygonVertices[CHECK_POLYGON_ANGLES + 1];
+XMFLOAT3 g_HitPolygonCenter = XMFLOAT3(0.0f, 0.0f, 0.0f);
 
 XMFLOAT3 Subtract(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
     return XMFLOAT3(pv3Vec1->x - pv3Vec2->x,
@@ -53,6 +44,29 @@ XMFLOAT3 Normalize(XMFLOAT3 *pv3Vec) {
 
 float Dot(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
     return pv3Vec1->x * pv3Vec2->x + pv3Vec1->y * pv3Vec2->y + pv3Vec1->z * pv3Vec2->z;
+}
+
+int CheckHit(XMFLOAT3 *pv3Point) {
+    auto fAngle = atan2f(pv3Point->z - g_HitPolygonCenter.z,
+        pv3Point->x - g_HitPolygonCenter.x);
+    if (fAngle < 0.0f) {
+        fAngle += XM_2PI;
+    }
+    auto nAngleIndex = (int)(fAngle / XM_2PI * CHECK_POLYGON_ANGLES);
+
+    auto v3LineVec = Subtract(
+        &g_HitPolygonVertices[nAngleIndex + 1],
+        &g_HitPolygonVertices[nAngleIndex]);
+    auto v3HitVec = Subtract(pv3Point, &g_HitPolygonVertices[nAngleIndex]);
+    auto fCross = v3LineVec.z * v3HitVec.x - v3LineVec.x * v3HitVec.z;
+    if (fCross < 0.0f) {
+        v3LineVec = Normalize(&v3LineVec);
+        auto fDot = Dot(&v3LineVec, &v3HitVec);
+        pv3Point->x = v3LineVec.x * fDot + g_HitPolygonVertices[nAngleIndex].x;
+        pv3Point->z = v3LineVec.z * fDot + g_HitPolygonVertices[nAngleIndex].z;
+    }
+
+    return nAngleIndex;
 }
 
 bool CheckHit(XMFLOAT3 *pv3Triangle, XMFLOAT3 *pv3Point) {
@@ -237,7 +251,7 @@ int g_nIndexNum = 0;
 TEX_PICTURE g_tGroundTexture, g_tAreaTexture;
 TEX_PICTURE g_tPlayerTexture;
 MY_MODEL g_mmPlayer, g_mmGround;
-MY_MODEL g_mmTriangles[CHECK_TRIANGLE_NUM];
+MY_MODEL g_mmHitPolygon;
 
 void ShowError(LPTSTR msg, LPTSTR title = _T("ERROR"), HWND hWnd = nullptr) {
     MessageBox(hWnd, msg, title, MB_ICONERROR | MB_OK);
@@ -739,9 +753,9 @@ HRESULT InitGeometry(void)
         return hr;
     }
     g_tAreaTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("8_2.bmp"), &g_tAreaTexture, 185, 185, 256, 256);
+    hr = LoadTexture(_T("8.bmp"), &g_tAreaTexture, 185, 185, 256, 256);
     if (FAILED(hr)) {
-        ShowError(_T("Failed to load texture 8_2.bmp"));
+        ShowError(_T("Failed to load texture 8.bmp"));
         return hr;
     }
     g_tPlayerTexture.pSRViewTexture = nullptr;
@@ -795,31 +809,38 @@ HRESULT InitGeometry(void)
     g_mmGround.matMatrix = XMMatrixIdentity();
     g_mmGround.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    // triangle for hit test
-    {
-        auto nIndex = 0;
-        for (auto i = 0; i < CHECK_TRIANGLE_NUM * 3; ++i) {
-            g_cvVertices[g_nVertexNum + nIndex].v4Pos = XMFLOAT4(
-                g_TriangleVertices[i].x,
-                g_TriangleVertices[i].y,
-                g_TriangleVertices[i].z, 1.0f);
-            g_cvVertices[g_nVertexNum + nIndex].v2UV = XMFLOAT2(
-                (float)(i % 2), (float)(i / 2));
-            g_wIndices[g_nIndexNum + nIndex] = i % 3;
-            ++nIndex;
-        }
-        for (auto i = 0; i < CHECK_TRIANGLE_NUM; ++i) {
-            g_mmTriangles[i].nVertexPos = g_nVertexNum;
-            g_mmTriangles[i].nVertexNum = 3;
-            g_nVertexNum += 3;
-            g_mmTriangles[i].nIndexPos = g_nIndexNum;
-            g_mmTriangles[i].nIndexNum = 3;
-            g_nIndexNum += 3;
-            g_mmTriangles[i].ptpTexture = &g_tAreaTexture;
-            g_mmTriangles[i].matMatrix = XMMatrixIdentity();
-            g_mmTriangles[i].v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-        }
+    auto fAngle = 0.0f;
+    auto fAngleDelta = XM_2PI / CHECK_POLYGON_ANGLES;
+    g_cvVertices[g_nVertexNum].v4Pos = XMFLOAT4(g_HitPolygonCenter.x, 0.0f, g_HitPolygonCenter.z, 1.0f);
+    g_cvVertices[g_nVertexNum].v2UV = XMFLOAT2(0.0f, 0.0f);
+    nVertexNum1 = 1;
+    for (auto i = 0; i < CHECK_POLYGON_ANGLES + 1; ++i) {
+        auto fRadius = 2.0f * (cosf(fAngle * 3.0f) + 1.7f);
+        auto x = g_HitPolygonCenter.x + fRadius * cosf(fAngle);
+        auto y = 0.01f;
+        auto z = g_HitPolygonCenter.z + fRadius * sinf(fAngle);
+        g_HitPolygonVertices[i] = XMFLOAT3(x, y, z);
+        g_cvVertices[g_nVertexNum + nVertexNum1].v4Pos = XMFLOAT4(x, y, z, 1.0f);
+        g_cvVertices[g_nVertexNum + nVertexNum1].v2UV = XMFLOAT2((float)i / CHECK_POLYGON_ANGLES, 1.0f);
+        nVertexNum1 += 1;
+        fAngle += fAngleDelta;
     }
+    nIndexNum1 = 0;
+    for (auto i = 0; i < CHECK_POLYGON_ANGLES; ++i) {
+        g_wIndices[g_nIndexNum + nIndexNum1 + 0] = 0;
+        g_wIndices[g_nIndexNum + nIndexNum1 + 1] = i + 1;
+        g_wIndices[g_nIndexNum + nIndexNum1 + 2] = i + 2;
+        nIndexNum1 += 3;
+    }
+    g_mmHitPolygon.nVertexPos = g_nVertexNum;
+    g_mmHitPolygon.nVertexNum = nVertexNum1;
+    g_mmHitPolygon.nIndexPos = g_nIndexNum;
+    g_mmHitPolygon.nIndexNum = nIndexNum1;
+    g_nVertexNum += nVertexNum1;
+    g_nIndexNum += nIndexNum1;
+    g_mmHitPolygon.ptpTexture = &g_tAreaTexture;
+    g_mmHitPolygon.matMatrix = XMMatrixIdentity();
+    g_mmHitPolygon.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     {
         D3D11_MAPPED_SUBRESOURCE mappedVertices, mappedIndices;
@@ -891,6 +912,25 @@ void DrawMyModel(MY_MODEL *pmmDrawModel, XMMATRIX *pmViewProjection) {
     g_pImmediateContext->DrawIndexed(pmmDrawModel->nIndexNum, pmmDrawModel->nIndexPos, pmmDrawModel->nVertexPos);
 }
 
+void DrawMyModelPartial(MY_MODEL *pmmDrawModel, XMMATRIX *pmViewProjection,
+    int nTrianglePos, int nTriangleNum)
+{
+    CBNeverChanges cbNeverChanges;
+    cbNeverChanges.matView = XMMatrixTranspose(pmmDrawModel->matMatrix * *pmViewProjection);
+    cbNeverChanges.v4AddColor = pmmDrawModel->v4AddColor;
+    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
+    g_pImmediateContext->PSSetShaderResources(0, 1, &(pmmDrawModel->ptpTexture->pSRViewTexture));
+    auto nIndexPos = nTrianglePos * 3;
+    if (nIndexPos > (pmmDrawModel->nIndexNum - 3)) {
+        nIndexPos = pmmDrawModel->nIndexNum - 3;
+    }
+    auto nIndexNum = nTriangleNum * 3;
+    if ((nIndexPos + nIndexNum) > pmmDrawModel->nIndexNum) {
+        nIndexNum = pmmDrawModel->nIndexNum - nIndexPos;
+    }
+    g_pImmediateContext->DrawIndexed(nIndexNum, pmmDrawModel->nIndexPos + nIndexPos, pmmDrawModel->nVertexPos);
+}
+
 LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
@@ -921,10 +961,7 @@ void Render(void) {
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
     g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
 
-    bool bHitResult[3];
-    for (auto i = 0; i < CHECK_TRIANGLE_NUM; ++i) {
-        bHitResult[i] = CheckHit(&(g_TriangleVertices[i * 3]), &(Player1.v3Pos));
-    }
+    auto nHitResult = CheckHit(&(Player1.v3Pos));
 
     XMVECTOR Eye = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y + 3.0f, Player1.v3Pos.z - 5.0f, 0.0f);
     XMVECTOR At = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 0.0);
@@ -940,16 +977,13 @@ void Render(void) {
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
     DrawMyModel(&g_mmGround, &matViewProjection);
 
-    g_pImmediateContext->RSSetState(g_pRS);
-    for (auto i = 0; i < CHECK_TRIANGLE_NUM; ++i) {
-        if (bHitResult[i]) {
-            g_mmTriangles[i].v4AddColor = XMFLOAT4(0.0f, 1.0f, 0.0f, 0.0f);
-        }
-        else {
-            g_mmTriangles[i].v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-        }
-        DrawMyModel(&g_mmTriangles[i], &matViewProjection);
-    }
+    DrawMyModel(&g_mmHitPolygon, &matViewProjection);
+
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL);
+    g_mmHitPolygon.v4AddColor = XMFLOAT4(-1.0f, -1.0f, -1.0f, 1.0f);
+    DrawMyModelPartial(&g_mmHitPolygon, &matViewProjection, nHitResult, 1);
+    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
+    g_mmHitPolygon.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
     g_mmPlayer.matMatrix = CreateWorldMatrix(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 1.0f);
