@@ -157,7 +157,7 @@ struct MY_MODEL {
 };
 
 UINT g_nClientWidth;
-UINT g_nClienthHeight;
+UINT g_nClientHeight;
 
 HWND g_hWnd;
 
@@ -254,7 +254,7 @@ HRESULT InitD3D(void) {
         ZeroMemory(&desc, sizeof(desc));
         desc.BufferCount = 1;
         desc.BufferDesc.Width = g_nClientWidth;
-        desc.BufferDesc.Height = g_nClienthHeight;
+        desc.BufferDesc.Height = g_nClientHeight;
         desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         desc.BufferDesc.RefreshRate.Numerator = 60;
         desc.BufferDesc.RefreshRate.Denominator = 1;
@@ -404,11 +404,11 @@ HRESULT InitD3D(void) {
 
     D3D11_VIEWPORT vp;
     vp.Width = (FLOAT)g_nClientWidth;
-    vp.Height = (FLOAT)g_nClienthHeight;
+    vp.Height = (FLOAT)g_nClientHeight;
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0.0f;
-    vp.TopLeftY = 0.0;
+    vp.TopLeftY = 0.0f;
     g_pImmediateContext->RSSetViewports(1, &vp);
 
     return S_OK;
@@ -719,9 +719,9 @@ HRESULT InitGeometry(void)
     g_mmPlayer.nVertexPos = g_nVertexNum;
     g_mmPlayer.nVertexNum = nVertexNum1 + nVertexNum2;
     g_mmPlayer.nIndexPos = g_nIndexNum;
-    g_mmPlayer.nIndexNum = nIndexNum1 + nVertexNum2;
+    g_mmPlayer.nIndexNum = nIndexNum1 + nIndexNum2;
     g_nVertexNum += nVertexNum1 + nVertexNum2;
-    g_nIndexNum += nIndexNum1 + nVertexNum2;
+    g_nIndexNum += nIndexNum1 + nIndexNum2;
     g_mmPlayer.ptpTexture = &g_tPlayerTexture;
     g_mmPlayer.matMatrix = XMMatrixIdentity();
     g_mmPlayer.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -864,7 +864,6 @@ void Render(void) {
     g_pImmediateContext->ClearDepthStencilView(g_pDepthStencilView, D3D11_CLEAR_DEPTH, 1.0f, 0);
 
     g_pImmediateContext->PSSetSamplers(0, 1, &g_pSamplerState);
-    g_pImmediateContext->RSSetState(g_pRS_Cull_CW);
 
     UINT nStrides = sizeof(CUSTOMVERTEX);
     UINT nOffsets = 0;
@@ -883,7 +882,7 @@ void Render(void) {
         bHitResult[i] = CheckHit(&(g_TriangleVertices[i * 3]), &(Player1.v3Pos));
     }
 
-    XMVECTOR Eye = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z - 5.0f, 0.0f);
+    XMVECTOR Eye = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y + 3.0f, Player1.v3Pos.z - 5.0f, 0.0f);
     XMVECTOR At = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 0.0);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     XMMATRIX matView = XMMatrixLookAtLH(Eye, At, Up);
@@ -919,7 +918,7 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
     LARGE_INTEGER nTimeFreq;
 
     g_nClientWidth = VIEW_WIDTH;
-    g_nClienthHeight = VIEW_HEIGHT;
+    g_nClientHeight = VIEW_HEIGHT;
 
     WNDCLASSEX wc = {
         sizeof(WNDCLASSEX), CS_CLASSDC, MsgProc, 0L, 0L,
@@ -929,7 +928,7 @@ int WINAPI _tWinMain(HINSTANCE hInst, HINSTANCE, LPTSTR, int)
     RegisterClassEx(&wc);
 
     RECT rc;
-    SetRect(&rc, 0, 0, g_nClientWidth, g_nClienthHeight);
+    SetRect(&rc, 0, 0, g_nClientWidth, g_nClientHeight);
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
     g_hWnd = CreateWindow(_T("D3D sample"), _T("Textures_1_1"),
         WS_OVERLAPPEDWINDOW, 100, 20, rc.right - rc.left, rc.bottom - rc.top,
