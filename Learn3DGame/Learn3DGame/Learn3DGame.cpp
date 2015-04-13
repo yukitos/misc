@@ -43,10 +43,25 @@ XMFLOAT3 Subtract(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
         pv3Vec1->z - pv3Vec2->z);
 }
 
+XMFLOAT3 Normalize(XMFLOAT3 *pv3Vec) {
+    auto fLength = sqrtf(
+        pv3Vec->x * pv3Vec->x +
+        pv3Vec->y * pv3Vec->y +
+        pv3Vec->z * pv3Vec->z);
+    return XMFLOAT3(pv3Vec->x / fLength, pv3Vec->y / fLength, pv3Vec->z / fLength);
+}
+
+float Dot(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
+    return pv3Vec1->x * pv3Vec2->x + pv3Vec1->y * pv3Vec2->y + pv3Vec1->z * pv3Vec2->z;
+}
+
 bool CheckHit(XMFLOAT3 *pv3Triangle, XMFLOAT3 *pv3Point) {
     auto v3TriVec0 = Subtract(pv3Triangle + 1, pv3Triangle + 0);
     auto v3TriVec1 = Subtract(pv3Triangle + 2, pv3Triangle + 1);
     auto v3TriVec2 = Subtract(pv3Triangle + 0, pv3Triangle + 2);
+    v3TriVec0 = Normalize(&v3TriVec0);
+    v3TriVec1 = Normalize(&v3TriVec1);
+    v3TriVec2 = Normalize(&v3TriVec2);
     auto v3HitVec0 = Subtract(pv3Point, pv3Triangle + 0);
     auto v3HitVec1 = Subtract(pv3Point, pv3Triangle + 1);
     auto v3HitVec2 = Subtract(pv3Point, pv3Triangle + 2);
@@ -54,18 +69,47 @@ bool CheckHit(XMFLOAT3 *pv3Triangle, XMFLOAT3 *pv3Point) {
     auto fCross1 = v3TriVec1.z * v3HitVec1.x - v3TriVec1.x * v3HitVec1.z;
     auto fCross2 = v3TriVec2.z * v3HitVec2.x - v3TriVec2.x * v3HitVec2.z;
     
+    bool bHit = false;
     if (fCross0 >= 0.0f) {
         if ((fCross1 >= 0.0f) && (fCross2 >= 0.0f)) {
-            return true;
+            bHit = true;
         } 
     }
     else {
         if ((fCross1 < 0.0f) && (fCross2 < 0.0f)) {
-            return true;
+            bHit = true;
         }
     }
 
-    return false;
+    if (bHit) {
+        float fDot;
+        auto abs0 = fabsf(fCross0);
+        auto abs1 = fabsf(fCross1);
+        auto abs2 = fabsf(fCross2);
+        // Adjust player's location
+        if (abs0 <= abs1 && abs0 <= abs2) {
+            // edge 0 is the closest one
+            fDot = Dot(&v3TriVec0, &v3HitVec0);
+            pv3Point->x = v3TriVec0.x * fDot + (pv3Triangle + 0)->x;
+            pv3Point->z = v3TriVec0.z * fDot + (pv3Triangle + 0)->z;
+        }
+        else {
+            if (abs1 <= abs2) {
+                // edge 1 is the closest one
+                fDot = Dot(&v3TriVec1, &v3HitVec1);
+                pv3Point->x = v3TriVec1.x * fDot + (pv3Triangle + 1)->x;
+                pv3Point->z = v3TriVec1.z * fDot + (pv3Triangle + 1)->z;
+            }
+            else {
+                // edge 2 is the closest one
+                fDot = Dot(&v3TriVec2, &v3HitVec2);
+                pv3Point->x = v3TriVec2.x * fDot + (pv3Triangle + 2)->x;
+                pv3Point->z = v3TriVec2.z * fDot + (pv3Triangle + 2)->z;
+            }
+        }
+    }
+    
+    return bHit;
 }
 
 bool CheckHit(XMFLOAT3 *pv3LineStart, XMFLOAT3 *pv3LineVec, float fLine_r,
@@ -695,9 +739,9 @@ HRESULT InitGeometry(void)
         return hr;
     }
     g_tAreaTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("8.bmp"), &g_tAreaTexture, 185, 185, 256, 256);
+    hr = LoadTexture(_T("8_2.bmp"), &g_tAreaTexture, 185, 185, 256, 256);
     if (FAILED(hr)) {
-        ShowError(_T("Failed to load texture 8.bmp"));
+        ShowError(_T("Failed to load texture 8_2.bmp"));
         return hr;
     }
     g_tPlayerTexture.pSRViewTexture = nullptr;
