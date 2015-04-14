@@ -4,13 +4,9 @@
 #include "stdafx.h"
 #include "Learn3DGame.h"
 
-#define ROT_SPEED (XM_PI / 100.0f)
 #define CORNER_NUM 20
 #define PLAYER_SPEED 0.08f
-#define GROUND_SIZE 20.0f
-#define HEIGHT_NUM 11
-#define BLOCK_NUM (HEIGHT_NUM - 1)
-#define BLOCK_WIDTH (GROUND_SIZE / BLOCK_NUM)
+#define GROUND_SIZE 6.0f
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
@@ -22,29 +18,31 @@ struct MY_PLAYER {
 };
 MY_PLAYER Player1;
 
-float g_fHeights[HEIGHT_NUM] = { 0.0f, 1.2f, 1.6f, 2.4f, 2.0f, 2.8f, 2.2f, 1.4f, 0.8f, 0.6f, 0.0f };
+float g_fHeights[4] = { 1.0f, 2.5f, 4.0f, 0.0f };
 
 float CheckGroundHeight(MY_PLAYER *pPlayer) {
-    auto fPlayerBlock = (pPlayer->v3Pos.x + (GROUND_SIZE / 2)) / (float)BLOCK_WIDTH;
-    auto nBlockIndex = (int)fPlayerBlock;
-    if (nBlockIndex < 0) nBlockIndex = 0;
-    if (nBlockIndex > HEIGHT_NUM - 2) nBlockIndex = HEIGHT_NUM - 2;
-    auto fBlockRes = fPlayerBlock - nBlockIndex;
-    auto fGrad = (g_fHeights[nBlockIndex + 1]) - g_fHeights[nBlockIndex];
+    auto fPlayerBlockX = (pPlayer->v3Pos.x + (GROUND_SIZE / 2)) / (float)GROUND_SIZE;
+    auto fGradX = g_fHeights[1] - g_fHeights[0];
+    auto fPlayerBlockZ = (pPlayer->v3Pos.z + (GROUND_SIZE / 2)) / (float)GROUND_SIZE;
+    auto fGradZ = g_fHeights[2] - g_fHeights[0];
 
-    return fGrad * fBlockRes + g_fHeights[nBlockIndex];
+    return fGradX * fPlayerBlockX + fGradZ * fPlayerBlockZ + g_fHeights[0];
 }
 
 void InitPlayer(void) {
-    Player1.v3Pos = XMFLOAT3(0.0f, 0.0f, -4.0f);
+    Player1.v3Pos = XMFLOAT3(0.0f, 0.0f, 0.0f);
 }
 
 void MovePlayer(void) {
     if (GetAsyncKeyState(VK_LEFT)) {
         Player1.v3Pos.x -= PLAYER_SPEED;
+        if (Player1.v3Pos.x < -GROUND_SIZE / 2)
+            Player1.v3Pos.x = -GROUND_SIZE / 2;
     }
     if (GetAsyncKeyState(VK_RIGHT)) {
         Player1.v3Pos.x += PLAYER_SPEED;
+        if (Player1.v3Pos.x > GROUND_SIZE / 2)
+            Player1.v3Pos.x = GROUND_SIZE / 2;
     }
     if (GetAsyncKeyState(VK_UP)) {
         Player1.v3Pos.z += PLAYER_SPEED;
@@ -664,35 +662,29 @@ HRESULT InitGeometry(void)
 
     // Ground
     {
-        auto nIndex = 0;
-        auto x = -GROUND_SIZE / 2;
-        for (auto i = 0; i < HEIGHT_NUM; ++i) {
-            auto u = (float)i / (HEIGHT_NUM - 1);
-            g_cvVertices[g_nVertexNum + nIndex].v4Pos = XMFLOAT4(x, g_fHeights[i], GROUND_SIZE / 2, 1.0f);
-            g_cvVertices[g_nVertexNum + nIndex].v2UV = XMFLOAT2(u, 0.0f);
-            ++nIndex;
-            g_cvVertices[g_nVertexNum + nIndex].v4Pos = XMFLOAT4(x, g_fHeights[i], -GROUND_SIZE / 2, 1.0f);
-            g_cvVertices[g_nVertexNum + nIndex].v2UV = XMFLOAT2(u, 1.0f);
-            ++nIndex;
-            x += BLOCK_WIDTH;
-        }
+        auto dhx = g_fHeights[1] - g_fHeights[0];
+        auto dhy = g_fHeights[2] - g_fHeights[0];
+        g_fHeights[3] = g_fHeights[0] + dhx + dhy;
+        g_cvVertices[g_nVertexNum + 0].v4Pos = XMFLOAT4(-GROUND_SIZE / 2, g_fHeights[0], -GROUND_SIZE / 2, 1.0f);
+        g_cvVertices[g_nVertexNum + 0].v2UV = XMFLOAT2(0.0f, 1.0f);
+        g_cvVertices[g_nVertexNum + 1].v4Pos = XMFLOAT4(GROUND_SIZE / 2, g_fHeights[1], -GROUND_SIZE / 2, 1.0f);
+        g_cvVertices[g_nVertexNum + 1].v2UV = XMFLOAT2(1.0f, 1.0f);
+        g_cvVertices[g_nVertexNum + 2].v4Pos = XMFLOAT4(-GROUND_SIZE / 2, g_fHeights[2], GROUND_SIZE / 2, 1.0f);
+        g_cvVertices[g_nVertexNum + 2].v2UV = XMFLOAT2(0.0f, 0.0f);
+        g_cvVertices[g_nVertexNum + 3].v4Pos = XMFLOAT4(GROUND_SIZE / 2, g_fHeights[3], GROUND_SIZE / 2, 1.0f);
+        g_cvVertices[g_nVertexNum + 3].v2UV = XMFLOAT2(1.0f, 0.0f);
+        g_wIndices[g_nIndexNum + 0] = 0;
+        g_wIndices[g_nIndexNum + 1] = 1;
+        g_wIndices[g_nIndexNum + 2] = 2;
+        g_wIndices[g_nIndexNum + 3] = 2;
+        g_wIndices[g_nIndexNum + 4] = 1;
+        g_wIndices[g_nIndexNum + 5] = 3;
         g_mmGround.nVertexPos = g_nVertexNum;
-        g_mmGround.nVertexNum = nIndex;
-        g_nVertexNum += nIndex;
-
-        nIndex = 0;
-        for (auto i = 0; i < HEIGHT_NUM - 1; ++i) {
-            g_wIndices[g_nIndexNum + nIndex + 0] = i * 2;
-            g_wIndices[g_nIndexNum + nIndex + 1] = i * 2 + 1;
-            g_wIndices[g_nIndexNum + nIndex + 2] = i * 2 + 2;
-            g_wIndices[g_nIndexNum + nIndex + 3] = i * 2 + 2;
-            g_wIndices[g_nIndexNum + nIndex + 4] = i * 2 + 1;
-            g_wIndices[g_nIndexNum + nIndex + 5] = i * 2 + 3;
-            nIndex += 6;
-        }
+        g_mmGround.nVertexNum = 4;
         g_mmGround.nIndexPos = g_nIndexNum;
-        g_mmGround.nIndexNum = nIndex;
-        g_nIndexNum += nIndex;
+        g_mmGround.nIndexNum = 6;
+        g_nVertexNum += 4;
+        g_nIndexNum += 6;
         g_mmGround.ptpTexture = &g_tSphere1Texture;
         g_mmGround.matMatrix = XMMatrixIdentity();
         g_mmGround.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -806,7 +798,7 @@ void Render(void) {
     XMMATRIX matViewProjection = matView * matProjection;
 
     g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
-    g_pImmediateContext->RSSetState(g_pRS);
+    g_pImmediateContext->RSSetState(g_pRS_Cull_CW);
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
     DrawMyModel(&g_mmGround, &matViewProjection);
