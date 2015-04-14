@@ -7,13 +7,10 @@
 #define ROT_SPEED (XM_PI / 100.0f)
 #define CORNER_NUM 20
 #define PLAYER_SPEED 0.08f
-
-#define SPHERE_R 0.1f
-#define CYLINDER_SP_R 0.5f
-#define CYLINDER_SP_LEN 2.0f
-
-#define CHECK_POLYGON_ANGLES 30
 #define GROUND_SIZE 20.0f
+#define HEIGHT_NUM 11
+#define BLOCK_NUM (HEIGHT_NUM - 1)
+#define BLOCK_WIDTH (GROUND_SIZE / BLOCK_NUM)
 
 struct CUSTOMVERTEX {
     XMFLOAT4 v4Pos;
@@ -25,141 +22,17 @@ struct MY_PLAYER {
 };
 MY_PLAYER Player1;
 
-XMFLOAT3 g_HitPolygonVertices[CHECK_POLYGON_ANGLES + 1];
-XMFLOAT3 g_HitPolygonCenter = XMFLOAT3(0.0f, 0.0f, 0.0f);
+float g_fHeights[HEIGHT_NUM] = { 0.0f, 1.2f, 1.6f, 2.4f, 2.0f, 2.8f, 2.2f, 1.4f, 0.8f, 0.6f, 0.0f };
 
-XMFLOAT3 Subtract(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
-    return XMFLOAT3(pv3Vec1->x - pv3Vec2->x,
-        pv3Vec1->y - pv3Vec2->y,
-        pv3Vec1->z - pv3Vec2->z);
-}
+float CheckGroundHeight(MY_PLAYER *pPlayer) {
+    auto fPlayerBlock = (pPlayer->v3Pos.x + (GROUND_SIZE / 2)) / (float)BLOCK_WIDTH;
+    auto nBlockIndex = (int)fPlayerBlock;
+    if (nBlockIndex < 0) nBlockIndex = 0;
+    if (nBlockIndex > HEIGHT_NUM - 2) nBlockIndex = HEIGHT_NUM - 2;
+    auto fBlockRes = fPlayerBlock - nBlockIndex;
+    auto fGrad = (g_fHeights[nBlockIndex + 1]) - g_fHeights[nBlockIndex];
 
-XMFLOAT3 Normalize(XMFLOAT3 *pv3Vec) {
-    auto fLength = sqrtf(
-        pv3Vec->x * pv3Vec->x +
-        pv3Vec->y * pv3Vec->y +
-        pv3Vec->z * pv3Vec->z);
-    return XMFLOAT3(pv3Vec->x / fLength, pv3Vec->y / fLength, pv3Vec->z / fLength);
-}
-
-float Dot(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
-    return pv3Vec1->x * pv3Vec2->x + pv3Vec1->y * pv3Vec2->y + pv3Vec1->z * pv3Vec2->z;
-}
-
-int CheckHit(XMFLOAT3 *pv3Point) {
-    auto nLastIndex = -1;
-    auto nAngleIndex = -1;
-
-    for (auto i = 0; i < 2; ++i) {
-        auto fAngle = atan2f(pv3Point->z - g_HitPolygonCenter.z,
-            pv3Point->x - g_HitPolygonCenter.x);
-        if (fAngle < 0.0f) {
-            fAngle += XM_2PI;
-        }
-        nAngleIndex = (int)(fAngle / XM_2PI * CHECK_POLYGON_ANGLES);
-        if (nAngleIndex == nLastIndex)
-            break;
-
-        auto v3LineVec = Subtract(
-            &g_HitPolygonVertices[nAngleIndex + 1],
-            &g_HitPolygonVertices[nAngleIndex]);
-        auto v3HitVec = Subtract(pv3Point, &g_HitPolygonVertices[nAngleIndex]);
-        auto fCross = v3LineVec.z * v3HitVec.x - v3LineVec.x * v3HitVec.z;
-        if (fCross < 0.0f) {
-            auto fLen = sqrtf(v3LineVec.x * v3LineVec.x + v3LineVec.y * v3LineVec.y + v3LineVec.z * v3LineVec.z);
-            v3LineVec = XMFLOAT3(v3LineVec.x / fLen, v3LineVec.y / fLen, v3LineVec.z / fLen);
-            auto fDot = Dot(&v3LineVec, &v3HitVec);
-            if (i == 1) {
-                if (fDot < 0.0f) { fDot = 0.0f; }
-                if (fDot > fLen) { fDot = fLen; }
-            }
-            pv3Point->x = v3LineVec.x * fDot + g_HitPolygonVertices[nAngleIndex].x;
-            pv3Point->z = v3LineVec.z * fDot + g_HitPolygonVertices[nAngleIndex].z;
-            if ((fDot >= 0.0f) && (fDot <= fLen))
-                break;
-            nLastIndex = nAngleIndex;
-        }
-    }
-
-    return nAngleIndex;
-}
-
-bool CheckHit(XMFLOAT3 *pv3Triangle, XMFLOAT3 *pv3Point) {
-    auto v3TriVec0 = Subtract(pv3Triangle + 1, pv3Triangle + 0);
-    auto v3TriVec1 = Subtract(pv3Triangle + 2, pv3Triangle + 1);
-    auto v3TriVec2 = Subtract(pv3Triangle + 0, pv3Triangle + 2);
-    v3TriVec0 = Normalize(&v3TriVec0);
-    v3TriVec1 = Normalize(&v3TriVec1);
-    v3TriVec2 = Normalize(&v3TriVec2);
-    auto v3HitVec0 = Subtract(pv3Point, pv3Triangle + 0);
-    auto v3HitVec1 = Subtract(pv3Point, pv3Triangle + 1);
-    auto v3HitVec2 = Subtract(pv3Point, pv3Triangle + 2);
-    auto fCross0 = v3TriVec0.z * v3HitVec0.x - v3TriVec0.x * v3HitVec0.z;
-    auto fCross1 = v3TriVec1.z * v3HitVec1.x - v3TriVec1.x * v3HitVec1.z;
-    auto fCross2 = v3TriVec2.z * v3HitVec2.x - v3TriVec2.x * v3HitVec2.z;
-    
-    bool bHit = false;
-    if (fCross0 >= 0.0f) {
-        if ((fCross1 >= 0.0f) && (fCross2 >= 0.0f)) {
-            bHit = true;
-        } 
-    }
-    else {
-        if ((fCross1 < 0.0f) && (fCross2 < 0.0f)) {
-            bHit = true;
-        }
-    }
-
-    if (bHit) {
-        float fDot;
-        auto abs0 = fabsf(fCross0);
-        auto abs1 = fabsf(fCross1);
-        auto abs2 = fabsf(fCross2);
-        // Adjust player's location
-        if (abs0 <= abs1 && abs0 <= abs2) {
-            // edge 0 is the closest one
-            fDot = Dot(&v3TriVec0, &v3HitVec0);
-            pv3Point->x = v3TriVec0.x * fDot + (pv3Triangle + 0)->x;
-            pv3Point->z = v3TriVec0.z * fDot + (pv3Triangle + 0)->z;
-        }
-        else {
-            if (abs1 <= abs2) {
-                // edge 1 is the closest one
-                fDot = Dot(&v3TriVec1, &v3HitVec1);
-                pv3Point->x = v3TriVec1.x * fDot + (pv3Triangle + 1)->x;
-                pv3Point->z = v3TriVec1.z * fDot + (pv3Triangle + 1)->z;
-            }
-            else {
-                // edge 2 is the closest one
-                fDot = Dot(&v3TriVec2, &v3HitVec2);
-                pv3Point->x = v3TriVec2.x * fDot + (pv3Triangle + 2)->x;
-                pv3Point->z = v3TriVec2.z * fDot + (pv3Triangle + 2)->z;
-            }
-        }
-    }
-    
-    return bHit;
-}
-
-bool CheckHit(XMFLOAT3 *pv3LineStart, XMFLOAT3 *pv3LineVec, float fLine_r,
-    XMFLOAT3 *pv3SphereCenter, float fSphere_r)
-{
-    auto dx = pv3SphereCenter->x - pv3LineStart->x;
-    auto dy = pv3SphereCenter->y - pv3LineStart->y;
-    auto dz = pv3SphereCenter->z - pv3LineStart->z;
-    auto t = (pv3LineVec->x * dx + pv3LineVec->y * dy + pv3LineVec->z * dz)
-        / (pv3LineVec->x * pv3LineVec->x + pv3LineVec->y * pv3LineVec->y + pv3LineVec->z * pv3LineVec->z);
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    auto mx = pv3LineVec->x * t + pv3LineStart->x;
-    auto my = pv3LineVec->y * t + pv3LineStart->y;
-    auto mz = pv3LineVec->z * t + pv3LineStart->z;
-    auto fDistSqr =
-        (mx - pv3SphereCenter->x) * (mx - pv3SphereCenter->x) +
-        (my - pv3SphereCenter->y) * (my - pv3SphereCenter->y) +
-        (mz - pv3SphereCenter->z) * (mz - pv3SphereCenter->z);
-    auto ar = fLine_r + fSphere_r;
-    return (fDistSqr < ar * ar);
+    return fGrad * fBlockRes + g_fHeights[nBlockIndex];
 }
 
 void InitPlayer(void) {
@@ -175,16 +48,15 @@ void MovePlayer(void) {
     }
     if (GetAsyncKeyState(VK_UP)) {
         Player1.v3Pos.z += PLAYER_SPEED;
+        if (Player1.v3Pos.z > GROUND_SIZE / 2)
+            Player1.v3Pos.z = GROUND_SIZE / 2;
     }
     if (GetAsyncKeyState(VK_DOWN)) {
         Player1.v3Pos.z -= PLAYER_SPEED;
+        if (Player1.v3Pos.z < -GROUND_SIZE / 2)
+            Player1.v3Pos.z = -GROUND_SIZE / 2;
     }
-    if (GetAsyncKeyState('Z')) {
-        Player1.v3Pos.y += PLAYER_SPEED;
-    }
-    if (GetAsyncKeyState('X')) {
-        Player1.v3Pos.y -= PLAYER_SPEED;
-    }
+    Player1.v3Pos.y = CheckGroundHeight(&Player1);
 }
 
 XMMATRIX CreateWorldMatrix(float x, float y, float z, float fSize){
@@ -263,10 +135,8 @@ int g_nVertexNum = 0;
 WORD g_wIndices[MAX_BUFFER_INDEX];
 int g_nIndexNum = 0;
 
-TEX_PICTURE g_tGroundTexture, g_tAreaTexture;
-TEX_PICTURE g_tPlayerTexture;
+TEX_PICTURE g_tSphere1Texture, g_tSphere2Texture;
 MY_MODEL g_mmPlayer, g_mmGround;
-MY_MODEL g_mmHitPolygon;
 
 void ShowError(LPTSTR msg, LPTSTR title = _T("ERROR"), HWND hWnd = nullptr) {
     MessageBox(hWnd, msg, title, MB_ICONERROR | MB_OK);
@@ -761,25 +631,18 @@ HRESULT InitGeometry(void)
         return hr;
     }
 
-    g_tGroundTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("10.bmp"), &g_tGroundTexture, 691, 691, 1024, 1024);
+    g_tSphere1Texture.pSRViewTexture = nullptr;
+    hr = LoadTexture(_T("10.bmp"), &g_tSphere1Texture, 691, 691, 1024, 1024);
     if (FAILED(hr)) {
         ShowError(_T("Failed to load texture 10.bmp"));
         return hr;
     }
-    g_tAreaTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("8.bmp"), &g_tAreaTexture, 185, 185, 256, 256);
+    g_tSphere2Texture.pSRViewTexture = nullptr;
+    hr = LoadTexture(_T("8.bmp"), &g_tSphere2Texture, 185, 185, 256, 256);
     if (FAILED(hr)) {
         ShowError(_T("Failed to load texture 8.bmp"));
         return hr;
     }
-    g_tPlayerTexture.pSRViewTexture = nullptr;
-    hr = LoadTexture(_T("9.bmp"), &g_tPlayerTexture, 222, 222, 256, 256);
-    if (FAILED(hr)) {
-        ShowError(_T("Failed to load texture 9.bmp"));
-        return hr;
-    }
-
 
     int nVertexNum1, nIndexNum1;
     int nVertexNum2, nIndexNum2;
@@ -795,67 +658,45 @@ HRESULT InitGeometry(void)
     g_mmPlayer.nIndexNum = nIndexNum1 + nIndexNum2;
     g_nVertexNum += nVertexNum1 + nVertexNum2;
     g_nIndexNum += nIndexNum1 + nIndexNum2;
-    g_mmPlayer.ptpTexture = &g_tPlayerTexture;
+    g_mmPlayer.ptpTexture = &g_tSphere2Texture;
     g_mmPlayer.matMatrix = XMMatrixIdentity();
     g_mmPlayer.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Ground
-    g_cvVertices[g_nVertexNum + 0].v4Pos = XMFLOAT4(-GROUND_SIZE / 2, 0.0f, GROUND_SIZE / 2, 1.0f);
-    g_cvVertices[g_nVertexNum + 0].v2UV = XMFLOAT2(0.0f, 0.0f);
-    g_cvVertices[g_nVertexNum + 1].v4Pos = XMFLOAT4(GROUND_SIZE / 2, 0.0f, GROUND_SIZE / 2, 1.0f);
-    g_cvVertices[g_nVertexNum + 1].v2UV = XMFLOAT2(1.0f, 0.0f);
-    g_cvVertices[g_nVertexNum + 2].v4Pos = XMFLOAT4(-GROUND_SIZE / 2, 0.0f, -GROUND_SIZE / 2, 1.0f);
-    g_cvVertices[g_nVertexNum + 2].v2UV = XMFLOAT2(0.0f, 1.0f);
-    g_cvVertices[g_nVertexNum + 3].v4Pos = XMFLOAT4(GROUND_SIZE / 2, 0.0f, -GROUND_SIZE / 2, 1.0f);
-    g_cvVertices[g_nVertexNum + 3].v2UV = XMFLOAT2(1.0f, 1.0f);
-    g_wIndices[g_nIndexNum + 0] = 0;
-    g_wIndices[g_nIndexNum + 1] = 2;
-    g_wIndices[g_nIndexNum + 2] = 1;
-    g_wIndices[g_nIndexNum + 3] = 1;
-    g_wIndices[g_nIndexNum + 4] = 2;
-    g_wIndices[g_nIndexNum + 5] = 3;
-    g_mmGround.nVertexPos = g_nVertexNum;
-    g_mmGround.nVertexNum = 4;
-    g_mmGround.nIndexPos = g_nIndexNum;
-    g_mmGround.nIndexNum = 6;
-    g_nVertexNum += 4;
-    g_nIndexNum += 6;
-    g_mmGround.ptpTexture = &g_tGroundTexture;
-    g_mmGround.matMatrix = XMMatrixIdentity();
-    g_mmGround.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+    {
+        auto nIndex = 0;
+        auto x = -GROUND_SIZE / 2;
+        for (auto i = 0; i < HEIGHT_NUM; ++i) {
+            auto u = (float)i / (HEIGHT_NUM - 1);
+            g_cvVertices[g_nVertexNum + nIndex].v4Pos = XMFLOAT4(x, g_fHeights[i], GROUND_SIZE / 2, 1.0f);
+            g_cvVertices[g_nVertexNum + nIndex].v2UV = XMFLOAT2(u, 0.0f);
+            ++nIndex;
+            g_cvVertices[g_nVertexNum + nIndex].v4Pos = XMFLOAT4(x, g_fHeights[i], -GROUND_SIZE / 2, 1.0f);
+            g_cvVertices[g_nVertexNum + nIndex].v2UV = XMFLOAT2(u, 1.0f);
+            ++nIndex;
+            x += BLOCK_WIDTH;
+        }
+        g_mmGround.nVertexPos = g_nVertexNum;
+        g_mmGround.nVertexNum = nIndex;
+        g_nVertexNum += nIndex;
 
-    auto fAngle = 0.0f;
-    auto fAngleDelta = XM_2PI / CHECK_POLYGON_ANGLES;
-    g_cvVertices[g_nVertexNum].v4Pos = XMFLOAT4(g_HitPolygonCenter.x, 0.0f, g_HitPolygonCenter.z, 1.0f);
-    g_cvVertices[g_nVertexNum].v2UV = XMFLOAT2(0.0f, 0.0f);
-    nVertexNum1 = 1;
-    for (auto i = 0; i < CHECK_POLYGON_ANGLES + 1; ++i) {
-        auto fRadius = 2.0f * (cosf(fAngle * 3.0f) + 1.7f);
-        auto x = g_HitPolygonCenter.x + fRadius * cosf(fAngle);
-        auto y = 0.01f;
-        auto z = g_HitPolygonCenter.z + fRadius * sinf(fAngle);
-        g_HitPolygonVertices[i] = XMFLOAT3(x, y, z);
-        g_cvVertices[g_nVertexNum + nVertexNum1].v4Pos = XMFLOAT4(x, y, z, 1.0f);
-        g_cvVertices[g_nVertexNum + nVertexNum1].v2UV = XMFLOAT2((float)i / CHECK_POLYGON_ANGLES, 1.0f);
-        nVertexNum1 += 1;
-        fAngle += fAngleDelta;
+        nIndex = 0;
+        for (auto i = 0; i < HEIGHT_NUM - 1; ++i) {
+            g_wIndices[g_nIndexNum + nIndex + 0] = i * 2;
+            g_wIndices[g_nIndexNum + nIndex + 1] = i * 2 + 1;
+            g_wIndices[g_nIndexNum + nIndex + 2] = i * 2 + 2;
+            g_wIndices[g_nIndexNum + nIndex + 3] = i * 2 + 2;
+            g_wIndices[g_nIndexNum + nIndex + 4] = i * 2 + 1;
+            g_wIndices[g_nIndexNum + nIndex + 5] = i * 2 + 3;
+            nIndex += 6;
+        }
+        g_mmGround.nIndexPos = g_nIndexNum;
+        g_mmGround.nIndexNum = nIndex;
+        g_nIndexNum += nIndex;
+        g_mmGround.ptpTexture = &g_tSphere1Texture;
+        g_mmGround.matMatrix = XMMatrixIdentity();
+        g_mmGround.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
     }
-    nIndexNum1 = 0;
-    for (auto i = 0; i < CHECK_POLYGON_ANGLES; ++i) {
-        g_wIndices[g_nIndexNum + nIndexNum1 + 0] = 0;
-        g_wIndices[g_nIndexNum + nIndexNum1 + 1] = i + 1;
-        g_wIndices[g_nIndexNum + nIndexNum1 + 2] = i + 2;
-        nIndexNum1 += 3;
-    }
-    g_mmHitPolygon.nVertexPos = g_nVertexNum;
-    g_mmHitPolygon.nVertexNum = nVertexNum1;
-    g_mmHitPolygon.nIndexPos = g_nIndexNum;
-    g_mmHitPolygon.nIndexNum = nIndexNum1;
-    g_nVertexNum += nVertexNum1;
-    g_nIndexNum += nIndexNum1;
-    g_mmHitPolygon.ptpTexture = &g_tAreaTexture;
-    g_mmHitPolygon.matMatrix = XMMatrixIdentity();
-    g_mmHitPolygon.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     {
         D3D11_MAPPED_SUBRESOURCE mappedVertices, mappedIndices;
@@ -881,9 +722,8 @@ HRESULT InitGeometry(void)
 
 void Cleanup(void)
 {
-    SAFE_RELEASE(g_tGroundTexture.pSRViewTexture);
-    SAFE_RELEASE(g_tAreaTexture.pSRViewTexture);
-    SAFE_RELEASE(g_tPlayerTexture.pSRViewTexture);
+    SAFE_RELEASE(g_tSphere1Texture.pSRViewTexture);
+    SAFE_RELEASE(g_tSphere2Texture.pSRViewTexture);
     SAFE_RELEASE(g_pVertexBuffer);
     SAFE_RELEASE(g_pIndexBuffer);
 
@@ -927,25 +767,6 @@ void DrawMyModel(MY_MODEL *pmmDrawModel, XMMATRIX *pmViewProjection) {
     g_pImmediateContext->DrawIndexed(pmmDrawModel->nIndexNum, pmmDrawModel->nIndexPos, pmmDrawModel->nVertexPos);
 }
 
-void DrawMyModelPartial(MY_MODEL *pmmDrawModel, XMMATRIX *pmViewProjection,
-    int nTrianglePos, int nTriangleNum)
-{
-    CBNeverChanges cbNeverChanges;
-    cbNeverChanges.matView = XMMatrixTranspose(pmmDrawModel->matMatrix * *pmViewProjection);
-    cbNeverChanges.v4AddColor = pmmDrawModel->v4AddColor;
-    g_pImmediateContext->UpdateSubresource(g_pCBNeverChanges, 0, NULL, &cbNeverChanges, 0, 0);
-    g_pImmediateContext->PSSetShaderResources(0, 1, &(pmmDrawModel->ptpTexture->pSRViewTexture));
-    auto nIndexPos = nTrianglePos * 3;
-    if (nIndexPos > (pmmDrawModel->nIndexNum - 3)) {
-        nIndexPos = pmmDrawModel->nIndexNum - 3;
-    }
-    auto nIndexNum = nTriangleNum * 3;
-    if ((nIndexPos + nIndexNum) > pmmDrawModel->nIndexNum) {
-        nIndexNum = pmmDrawModel->nIndexNum - nIndexPos;
-    }
-    g_pImmediateContext->DrawIndexed(nIndexNum, pmmDrawModel->nIndexPos + nIndexPos, pmmDrawModel->nVertexPos);
-}
-
 LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
@@ -976,8 +797,6 @@ void Render(void) {
     g_pImmediateContext->PSSetShader(g_pPixelShader, NULL, 0);
     g_pImmediateContext->PSSetConstantBuffers(0, 1, &g_pCBNeverChanges);
 
-    auto nHitResult = CheckHit(&(Player1.v3Pos));
-
     XMVECTOR Eye = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y + 3.0f, Player1.v3Pos.z - 5.0f, 0.0f);
     XMVECTOR At = XMVectorSet(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 0.0);
     XMVECTOR Up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
@@ -987,18 +806,10 @@ void Render(void) {
     XMMATRIX matViewProjection = matView * matProjection;
 
     g_pImmediateContext->OMSetDepthStencilState(g_pDepthStencilState, 1);
-    g_pImmediateContext->RSSetState(g_pRS_Cull_CW);
+    g_pImmediateContext->RSSetState(g_pRS);
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
     DrawMyModel(&g_mmGround, &matViewProjection);
-
-    DrawMyModel(&g_mmHitPolygon, &matViewProjection);
-
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, NULL);
-    g_mmHitPolygon.v4AddColor = XMFLOAT4(-1.0f, -1.0f, -1.0f, 1.0f);
-    DrawMyModelPartial(&g_mmHitPolygon, &matViewProjection, nHitResult, 1);
-    g_pImmediateContext->OMSetRenderTargets(1, &g_pRTV, g_pDepthStencilView);
-    g_mmHitPolygon.v4AddColor = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
 
     g_pImmediateContext->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
     g_mmPlayer.matMatrix = CreateWorldMatrix(Player1.v3Pos.x, Player1.v3Pos.y, Player1.v3Pos.z, 1.0f);
