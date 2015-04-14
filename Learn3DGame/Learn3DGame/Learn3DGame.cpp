@@ -47,23 +47,38 @@ float Dot(XMFLOAT3 *pv3Vec1, XMFLOAT3 *pv3Vec2) {
 }
 
 int CheckHit(XMFLOAT3 *pv3Point) {
-    auto fAngle = atan2f(pv3Point->z - g_HitPolygonCenter.z,
-        pv3Point->x - g_HitPolygonCenter.x);
-    if (fAngle < 0.0f) {
-        fAngle += XM_2PI;
-    }
-    auto nAngleIndex = (int)(fAngle / XM_2PI * CHECK_POLYGON_ANGLES);
+    auto nLastIndex = -1;
+    auto nAngleIndex = -1;
 
-    auto v3LineVec = Subtract(
-        &g_HitPolygonVertices[nAngleIndex + 1],
-        &g_HitPolygonVertices[nAngleIndex]);
-    auto v3HitVec = Subtract(pv3Point, &g_HitPolygonVertices[nAngleIndex]);
-    auto fCross = v3LineVec.z * v3HitVec.x - v3LineVec.x * v3HitVec.z;
-    if (fCross < 0.0f) {
-        v3LineVec = Normalize(&v3LineVec);
-        auto fDot = Dot(&v3LineVec, &v3HitVec);
-        pv3Point->x = v3LineVec.x * fDot + g_HitPolygonVertices[nAngleIndex].x;
-        pv3Point->z = v3LineVec.z * fDot + g_HitPolygonVertices[nAngleIndex].z;
+    for (auto i = 0; i < 2; ++i) {
+        auto fAngle = atan2f(pv3Point->z - g_HitPolygonCenter.z,
+            pv3Point->x - g_HitPolygonCenter.x);
+        if (fAngle < 0.0f) {
+            fAngle += XM_2PI;
+        }
+        nAngleIndex = (int)(fAngle / XM_2PI * CHECK_POLYGON_ANGLES);
+        if (nAngleIndex == nLastIndex)
+            break;
+
+        auto v3LineVec = Subtract(
+            &g_HitPolygonVertices[nAngleIndex + 1],
+            &g_HitPolygonVertices[nAngleIndex]);
+        auto v3HitVec = Subtract(pv3Point, &g_HitPolygonVertices[nAngleIndex]);
+        auto fCross = v3LineVec.z * v3HitVec.x - v3LineVec.x * v3HitVec.z;
+        if (fCross < 0.0f) {
+            auto fLen = sqrtf(v3LineVec.x * v3LineVec.x + v3LineVec.y * v3LineVec.y + v3LineVec.z * v3LineVec.z);
+            v3LineVec = XMFLOAT3(v3LineVec.x / fLen, v3LineVec.y / fLen, v3LineVec.z / fLen);
+            auto fDot = Dot(&v3LineVec, &v3HitVec);
+            if (i == 1) {
+                if (fDot < 0.0f) { fDot = 0.0f; }
+                if (fDot > fLen) { fDot = fLen; }
+            }
+            pv3Point->x = v3LineVec.x * fDot + g_HitPolygonVertices[nAngleIndex].x;
+            pv3Point->z = v3LineVec.z * fDot + g_HitPolygonVertices[nAngleIndex].z;
+            if ((fDot >= 0.0f) && (fDot <= fLen))
+                break;
+            nLastIndex = nAngleIndex;
+        }
     }
 
     return nAngleIndex;
