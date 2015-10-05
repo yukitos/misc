@@ -1,0 +1,13 @@
+<body>
+<div id="elem1">Hello</div>
+<div id="elem2">World</div>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script type="text/javascript">
+$(document).ready(function() {
+  $("#elem2").hide();
+
+  $("#elem1").on("click", function() { $("#elem1").fadeOut(200, function() { $("#elem2").fadeIn(); }); });
+  $("#elem2").on("click", function() { $("#elem2").fadeOut(200, function() { $("#elem1").fadeIn(); }); });
+});
+</script>
+</body>
